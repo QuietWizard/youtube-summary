@@ -7,7 +7,6 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 
 const supabase = createClient()
-const UNCATEGORIZED = 'None'
 
 type AppShellProps = {
   categories: string[]
@@ -19,7 +18,8 @@ export default function AppShell({ categories, children }: AppShellProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const selectedCategory = searchParams.get('category') || UNCATEGORIZED
+  const selectedCategory = searchParams.get('category')
+  const isArchivedView = searchParams.get('archived') === 'true'
   const shouldShowShell =
     pathname !== '/login' && !pathname.startsWith('/auth/callback')
 
@@ -36,7 +36,7 @@ export default function AppShell({ categories, children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-50">
       <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="mx-auto grid max-w-[1600px] grid-cols-[auto_1fr_auto] items-center px-4 py-4">
+        <div className="mx-auto flex max-w-[1600px] items-center px-4 py-4">
           <button
             type="button"
             aria-label="Open navigation menu"
@@ -52,16 +52,17 @@ export default function AppShell({ categories, children }: AppShellProps) {
           </button>
           <Link
             href="/"
-            className="justify-self-center text-xl font-bold text-zinc-900 transition-colors hover:text-zinc-600 dark:text-zinc-50 dark:hover:text-zinc-300 sm:text-2xl"
+            className="flex-1 text-center text-xl font-bold text-zinc-900 transition-colors hover:text-zinc-600 dark:text-zinc-50 dark:hover:text-zinc-300 sm:text-2xl"
           >
-            YouTube Summary
+            Video Summary Articles
           </Link>
-          <div className="h-10 w-10" aria-hidden="true" />
+          <div className="h-10 w-10 shrink-0" aria-hidden="true" />
         </div>
       </header>
 
       <MobileMenu
         categories={categories}
+        isArchivedView={isArchivedView}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
         onLogout={handleLogout}
@@ -77,16 +78,18 @@ export default function AppShell({ categories, children }: AppShellProps) {
 
 function MobileMenu({
   categories,
+  isArchivedView,
   isOpen,
   onClose,
   onLogout,
   selectedCategory,
 }: {
   categories: string[]
+  isArchivedView: boolean
   isOpen: boolean
   onClose: () => void
   onLogout: () => void
-  selectedCategory: string
+  selectedCategory: string | null
 }) {
   return (
     <div
@@ -124,16 +127,16 @@ function MobileMenu({
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-4">
           <CategoryLink
-            active={selectedCategory === UNCATEGORIZED}
+            active={selectedCategory === null && !isArchivedView}
             onNavigate={onClose}
             variant="sidebar"
           >
-            {UNCATEGORIZED}
+            All Videos
           </CategoryLink>
           {categories.map((category) => (
             <CategoryLink
               key={category}
-              active={selectedCategory === category}
+              active={selectedCategory === category && !isArchivedView}
               category={category}
               onNavigate={onClose}
               variant="sidebar"
@@ -142,6 +145,20 @@ function MobileMenu({
             </CategoryLink>
           ))}
         </nav>
+
+        <div className="p-4">
+          <Link
+            href="/?archived=true"
+            onClick={onClose}
+            className={`block w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
+              isArchivedView
+                ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
+                : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900'
+            }`}
+          >
+            Show Archived Videos
+          </Link>
+        </div>
 
         <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
           <button

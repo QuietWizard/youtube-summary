@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { archiveVideo, markVideoAsRead } from '@/app/actions'
-import { createAdminClient } from '@/utils/supabase/admin'
 import { createClient } from '@/utils/supabase/server'
+import { createAdminClient } from '@/utils/supabase/admin'
 import type { Video } from '@/types/database'
+import Summary from './summary'
 
 type VideoDetail = Pick<
   Video,
@@ -16,6 +17,7 @@ type VideoDetail = Pick<
   | 'summary'
   | 'videoPublished'
   | 'category'
+  | 'read'
 >
 
 export default async function VideoDetailPage({
@@ -37,6 +39,14 @@ export default async function VideoDetailPage({
 
   if (!video) {
     notFound()
+  }
+
+  const categories = await getCategories()
+  const normalizedCategory = normalizeCategory(video.category)
+
+  if (!categories.includes(normalizedCategory)) {
+    categories.push(normalizedCategory)
+    categories.sort((a, b) => a.localeCompare(b))
   }
 
   return (
@@ -64,7 +74,7 @@ export default async function VideoDetailPage({
           </div>
 
           <div className="flex items-center gap-3">
-            <ActionForm action={markVideoAsRead} videoId={video.id}>
+            <ActionForm action={markVideoAsRead} videoId={video.id} isRead={video.read === true}>
               Mark as Read
             </ActionForm>
             <ActionForm action={archiveVideo} danger videoId={video.id}>
@@ -75,27 +85,36 @@ export default async function VideoDetailPage({
 
         <p className="mb-3 text-sm font-medium text-zinc-600 dark:text-zinc-400">
           {formatPublishedDate(video.videoPublished)}
-          {video.category && ` / ${video.category}`}
         </p>
         <h1 className="max-w-4xl text-4xl font-bold leading-tight text-zinc-900 dark:text-zinc-50 md:text-5xl">
           {video.title || 'Untitled video'}
         </h1>
         <p className="mt-4 text-lg font-medium text-zinc-700 dark:text-zinc-300">
-          {video.videoChannelTitle || 'Unknown channel'}
+          <span className="mr-4">
+            <Link
+              href={`https://www.youtube.com/channel/${video.videoChannelId}`}
+            >
+              {video.videoChannelTitle || 'Unknown channel'}
+            </Link>
+          </span>|<span className="ml-4">
+            <Link href={`https://www.youtube.com/watch?v=${video.videoId}`}>
+              Watch on YouTube
+            </Link>
+          </span>              
         </p>
 
-        <div className="mb-8 mt-8 flex flex-wrap gap-x-6 gap-y-2 border-b border-zinc-200 pb-6 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-          {video.videoId && <span>Video ID: {video.videoId}</span>}
-          {video.videoChannelId && (
-            <span>Channel ID: {video.videoChannelId}</span>
-          )}
-        </div>
+        <hr className="my-8 border-zinc-200 dark:border-zinc-800" />
 
-        <SummaryContent summary={video.summary} />
+        <Summary
+          summary={video.summary}
+          videoId={video.id}
+          initialCategory={normalizedCategory}
+          categories={categories}
+        />
 
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <ActionForm action={markVideoAsRead} videoId={video.id}>
+            <ActionForm action={markVideoAsRead} videoId={video.id} isRead={video.read === true}>
               Mark as Read
             </ActionForm>
             <ActionForm action={archiveVideo} danger videoId={video.id}>
@@ -109,11 +128,11 @@ export default async function VideoDetailPage({
 }
 
 async function getVideoByUrlId(id: string) {
-  const adminSupabase = createAdminClient()
+  const supabase = await createAdminClient()
   const fields =
-    'id, videoId, title, thumbnail, videoChannelId, videoChannelTitle, summary, videoPublished, category'
+    'id, videoId, title, thumbnail, videoChannelId, videoChannelTitle, summary, videoPublished, category, read'
 
-  const { data: videoByVideoId, error: videoIdError } = await adminSupabase
+  const { data: videoByVideoId, error: videoIdError } = await supabase
     .from('YouTube-Summary')
     .select(fields)
     .eq('videoId', id)
@@ -133,7 +152,7 @@ async function getVideoByUrlId(id: string) {
     return null
   }
 
-  const { data: videoByRowId, error: rowIdError } = await adminSupabase
+  const { data: videoByRowId, error: rowIdError } = await supabase
     .from('YouTube-Summary')
     .select(fields)
     .eq('id', rowId)
@@ -150,13 +169,35 @@ function ActionForm({
   action,
   children,
   danger = false,
+  isRead = false,
   videoId,
 }: {
   action: (formData: FormData) => Promise<void>
   children: string
   danger?: boolean
+  isRead?: boolean
   videoId: number
 }) {
+  if (isRead) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700 dark:border-green-900/60 dark:bg-green-950/40 dark:text-green-300">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className="size-4"
+        >
+          <path
+            fillRule="evenodd"
+            d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+            clipRule="evenodd"
+          />
+        </svg>
+        Marked as Read
+      </span>
+    )
+  }
+
   return (
     <form action={action}>
       <input type="hidden" name="id" value={videoId} />
@@ -174,60 +215,25 @@ function ActionForm({
   )
 }
 
-function SummaryContent({ summary }: { summary: string | null }) {
-  if (!summary) {
-    return (
-      <p className="text-zinc-600 dark:text-zinc-400">
-        No summary is available for this video.
-      </p>
-    )
+async function getCategories() {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase.from('Categories').select('category')
+
+  if (error) {
+    return []
   }
 
-  return (
-    <div className="space-y-4">
-      {summary.split('\n').map((line, index) => (
-        <SummaryLine key={`${index}-${line}`} line={line} />
-      ))}
-    </div>
-  )
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => row.category?.trim())
+        .filter((category): category is string => Boolean(category))
+    )
+  ).sort((a, b) => a.localeCompare(b))
 }
 
-function SummaryLine({ line }: { line: string }) {
-  const trimmed = line.trim()
-
-  if (!trimmed) {
-    return <div className="h-2" />
-  }
-
-  if (trimmed.startsWith('### ')) {
-    return (
-      <h3 className="pt-3 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        {trimmed.replace(/^###\s+/, '')}
-      </h3>
-    )
-  }
-
-  if (trimmed.startsWith('## ')) {
-    return (
-      <h2 className="pt-4 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-        {trimmed.replace(/^##\s+/, '')}
-      </h2>
-    )
-  }
-
-  if (trimmed.startsWith('- ')) {
-    return (
-      <p className="pl-4 text-base leading-7 text-zinc-700 before:mr-2 before:content-['-'] dark:text-zinc-300">
-        {trimmed.replace(/^-\s+/, '')}
-      </p>
-    )
-  }
-
-  return (
-    <p className="text-base leading-7 text-zinc-700 dark:text-zinc-300">
-      {trimmed}
-    </p>
-  )
+function normalizeCategory(category: string | null) {
+  return category?.trim() || 'None'
 }
 
 function formatPublishedDate(date: string | null) {

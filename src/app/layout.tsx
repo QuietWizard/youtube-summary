@@ -17,7 +17,7 @@ export default async function RootLayout({
   const categories = await getCategories();
 
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full">
         <AppShell categories={categories}>{children}</AppShell>
       </body>
@@ -37,9 +37,8 @@ async function getCategories() {
 
   const adminSupabase = createAdminClient();
   const { data, error } = await adminSupabase
-    .from("YouTube-Summary")
-    .select("category")
-    .or("archived.is.null,archived.eq.false");
+    .from("Categories")
+    .select("category");
 
   if (error) {
     return [];
@@ -48,7 +47,7 @@ async function getCategories() {
   return Array.from(
     new Set(
       (data ?? [])
-        .map((video) => video.category?.trim())
+        .map((row) => row.category?.trim())
         .filter((category): category is string => Boolean(category && category !== "None"))
     )
   ).sort((a, b) => a.localeCompare(b));
