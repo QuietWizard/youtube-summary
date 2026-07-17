@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import VideosClient from './videos-client'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { createClient } from '@/utils/supabase/server'
+import { getCategories } from '@/utils/get-categories'
 import type { Video } from '@/types/database'
 
 const UNCATEGORIZED = 'None'
@@ -55,9 +56,10 @@ export default async function Home({
     query = query.eq('category', selectedCategory)
   }
 
-  const { data, error, count } = await query
-    .order('created_at', { ascending: false })
-    .range(from, to)
+  const [{ data, error, count }, categories] = await Promise.all([
+    query.order('created_at', { ascending: false }).range(from, to),
+    getCategories(),
+  ])
 
   const totalCount = count ?? 0
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
@@ -71,6 +73,7 @@ export default async function Home({
     <VideosClient
       videos={(data ?? []) as Video[]}
       error={error?.message ?? null}
+      categories={categories}
       selectedCategory={selectedCategory}
       categoryParam={categoryParam}
       showAll={showAll}

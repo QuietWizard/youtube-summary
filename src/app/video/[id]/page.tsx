@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
+import { getCategories } from '@/utils/get-categories'
 import type { Video } from '@/types/database'
 import Summary from './summary'
 import ActionBar from './action-bar'
@@ -158,23 +159,6 @@ async function getVideoByUrlId(id: string) {
   }
 
   return videoByRowId
-}
-
-async function getCategories() {
-  const supabase = await createAdminClient()
-  const { data, error } = await supabase.from('Categories').select('category')
-
-  if (error) {
-    return []
-  }
-
-  return Array.from(
-    new Set(
-      (data ?? [])
-        .map((row) => row.category?.trim())
-        .filter((category): category is string => Boolean(category))
-    )
-  ).sort((a, b) => a.localeCompare(b))
 }
 
 function normalizeCategory(category: string | null) {

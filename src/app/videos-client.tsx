@@ -11,6 +11,7 @@ const DEFAULT_PAGE_SIZE = 20
 type VideosClientProps = {
   videos: Video[]
   error: string | null
+  categories: string[]
   selectedCategory: string | null
   categoryParam: string | null
   showAll: boolean
@@ -25,6 +26,7 @@ type VideosClientProps = {
 export default function VideosClient({
   videos,
   error,
+  categories,
   selectedCategory,
   categoryParam,
   showAll,
@@ -54,12 +56,14 @@ export default function VideosClient({
     )
   }, [videos, term])
 
+  const isUncategorizedView =
+    !showArchived && !showAll && (!selectedCategory || selectedCategory === 'None')
   const sectionEyebrow = showArchived ? 'Archive' : 'Codex Feed'
   const sectionTitle = showArchived
     ? 'Archived'
     : showAll
       ? 'All Videos'
-      : !selectedCategory || selectedCategory === 'None'
+      : isUncategorizedView
         ? 'Uncategorized'
         : selectedCategory
 
@@ -76,9 +80,11 @@ export default function VideosClient({
           <div className="mb-1.5 text-[11px] font-bold tracking-[0.2em] text-qw-accent uppercase">
             {sectionEyebrow}
           </div>
-          <h1 className="font-display text-[30px] font-semibold text-qw-fg-1">
-            {sectionTitle}
-          </h1>
+          {!isUncategorizedView && (
+            <h1 className="font-display text-[30px] font-semibold text-qw-fg-1">
+              {sectionTitle}
+            </h1>
+          )}
           <div className="mt-1.5 text-[13px] text-qw-muted-2">
             {totalCount} video{totalCount === 1 ? '' : 's'}
           </div>
@@ -123,6 +129,7 @@ export default function VideosClient({
             <VideoCard
               key={video.id}
               video={video}
+              categories={categories}
               listHref={listHref}
               priority={index < 3}
             />
