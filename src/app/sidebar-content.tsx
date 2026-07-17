@@ -2,7 +2,12 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useState, useTransition } from 'react'
+import type { DragEvent, ReactNode } from 'react'
+import { archiveVideo, updateVideoCategory } from './actions'
 import type { CategoryNavItem } from './layout'
+import { VIDEO_DRAG_MIME_TYPE } from './video-drag'
 
 type SidebarContentProps = {
   categories: CategoryNavItem[]
@@ -29,8 +34,24 @@ export default function SidebarContent({
   onClose,
   onSignOut,
 }: SidebarContentProps) {
+  const router = useRouter()
+  const [, startTransition] = useTransition()
   const isAllActive = !isArchivedActive && activeCategory === 'all'
   const isUncategorizedActive = !isArchivedActive && activeCategory === null
+
+  function handleDropCategory(videoId: number, category: string) {
+    startTransition(async () => {
+      await updateVideoCategory(videoId, category)
+      router.refresh()
+    })
+  }
+
+  function handleDropArchive(videoId: number) {
+    startTransition(async () => {
+      await archiveVideo(videoId)
+      router.refresh()
+    })
+  }
 
   return (
     <div className="flex h-full flex-col font-ui">
@@ -93,6 +114,7 @@ export default function SidebarContent({
             active={!isArchivedActive && activeCategory === category.label}
             count={category.count}
             onNavigate={onNavigate}
+            onDropVideo={(videoId) => handleDropCategory(videoId, category.label)}
             icon={<FolderIcon />}
           >
             {category.label}
@@ -104,6 +126,7 @@ export default function SidebarContent({
           active={isUncategorizedActive}
           count={uncategorizedCount}
           onNavigate={onNavigate}
+          onDropVideo={(videoId) => handleDropCategory(videoId, 'None')}
           icon={<FolderIcon />}
         >
           Uncategorized
@@ -115,6 +138,7 @@ export default function SidebarContent({
           href="/?archived=true"
           active={isArchivedActive}
           onNavigate={onNavigate}
+          onDropVideo={handleDropArchive}
           icon={<ArchiveIcon />}
         >
           Archived
@@ -158,22 +182,61 @@ function NavLink({
   onNavigate,
   icon,
   children,
+  onDropVideo,
 }: {
   href: string
   active: boolean
   count?: number
   onNavigate?: () => void
-  icon: React.ReactNode
-  children: React.ReactNode
+  icon: ReactNode
+  children: ReactNode
+  onDropVideo?: (videoId: number) => void
 }) {
+  const [isDragOver, setIsDragOver] = useState(false)
+  const isDroppable = onDropVideo !== undefined
+
+  function handleDragOver(event: DragEvent<HTMLAnchorElement>) {
+    if (!isDroppable) {
+      return
+    }
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLAnchorElement>) {
+    if (!isDroppable) {
+      return
+    }
+    event.preventDefault()
+    setIsDragOver(true)
+  }
+
+  function handleDrop(event: DragEvent<HTMLAnchorElement>) {
+    if (!isDroppable) {
+      return
+    }
+    event.preventDefault()
+    setIsDragOver(false)
+    const videoId = Number(event.dataTransfer.getData(VIDEO_DRAG_MIME_TYPE))
+    if (Number.isInteger(videoId) && videoId > 0) {
+      onDropVideo(videoId)
+    }
+  }
+
   return (
     <Link
       href={href}
       onClick={onNavigate}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={handleDrop}
       className={`flex items-center justify-between gap-2.5 rounded-md px-3 py-[9px] text-[13px] font-medium transition-colors duration-200 ${
-        active
-          ? 'bg-qw-surface-2 text-qw-fg-1'
-          : 'text-qw-muted-1 hover:bg-qw-surface-1 hover:text-qw-fg-2'
+        isDragOver
+          ? 'bg-qw-surface-2 text-qw-fg-1 ring-2 ring-qw-accent'
+          : active
+            ? 'bg-qw-surface-2 text-qw-fg-1'
+            : 'text-qw-muted-1 hover:bg-qw-surface-1 hover:text-qw-fg-2'
       }`}
     >
       <span className="flex min-w-0 items-center gap-2.5">
