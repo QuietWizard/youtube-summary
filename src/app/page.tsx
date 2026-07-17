@@ -21,8 +21,9 @@ export default async function Home({
   const { category, page, archived, pageSize: pageSizeParam } = await searchParams
   const rawCategory = category?.trim() || null
   const showArchived = archived === 'true'
+  const showAll = !showArchived && rawCategory?.toLowerCase() === 'all'
   const selectedCategory =
-    !showArchived && !rawCategory ? UNCATEGORIZED : rawCategory
+    !showArchived && !showAll && !rawCategory ? UNCATEGORIZED : rawCategory
   const pageSize = PAGE_SIZE_OPTIONS.includes(Number(pageSizeParam))
     ? Number(pageSizeParam)
     : DEFAULT_PAGE_SIZE
@@ -50,7 +51,7 @@ export default async function Home({
 
   if (selectedCategory === UNCATEGORIZED) {
     query = query.or('category.is.null,category.eq.,category.eq.None')
-  } else if (selectedCategory) {
+  } else if (!showAll && selectedCategory) {
     query = query.eq('category', selectedCategory)
   }
 
@@ -60,15 +61,23 @@ export default async function Home({
 
   const totalCount = count ?? 0
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const categoryParam = showAll
+    ? 'all'
+    : selectedCategory && selectedCategory !== UNCATEGORIZED
+      ? selectedCategory
+      : null
 
   return (
     <VideosClient
       videos={(data ?? []) as Video[]}
       error={error?.message ?? null}
       selectedCategory={selectedCategory}
+      categoryParam={categoryParam}
+      showAll={showAll}
       showArchived={showArchived}
       currentPage={currentPage}
       totalPages={totalPages}
+      totalCount={totalCount}
       pageSize={pageSize}
       pageSizeOptions={PAGE_SIZE_OPTIONS}
     />

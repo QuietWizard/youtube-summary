@@ -1,22 +1,31 @@
 'use server'
 
-import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { createClient } from '@/utils/supabase/server'
 
-export async function markVideoAsRead(formData: FormData) {
-  const id = getVideoId(formData)
+export async function markVideoAsRead(id: number) {
   await updateVideo(id, { read: true })
   revalidatePath('/')
   revalidatePath('/video/[id]', 'page')
 }
 
-export async function archiveVideo(formData: FormData) {
-  const id = getVideoId(formData)
+export async function markVideoAsUnread(id: number) {
+  await updateVideo(id, { read: false })
+  revalidatePath('/')
+  revalidatePath('/video/[id]', 'page')
+}
+
+export async function archiveVideo(id: number) {
   await updateVideo(id, { archived: true, read: true })
   revalidatePath('/')
-  redirect(getRedirectTarget(formData))
+  revalidatePath('/video/[id]', 'page')
+}
+
+export async function unarchiveVideo(id: number) {
+  await updateVideo(id, { archived: false })
+  revalidatePath('/')
+  revalidatePath('/video/[id]', 'page')
 }
 
 export async function updateVideoCategory(videoId: number, category: string) {
@@ -71,6 +80,10 @@ async function updateVideo(
   id: number,
   values: { read?: boolean; archived?: boolean; category?: string }
 ) {
+  if (!Number.isInteger(id) || id < 1) {
+    throw new Error('Invalid video id')
+  }
+
   const supabase = await createClient()
   const {
     data: { user },
@@ -89,28 +102,4 @@ async function updateVideo(
   if (error) {
     throw new Error(error.message)
   }
-}
-
-function getVideoId(formData: FormData) {
-  const id = Number(formData.get('id'))
-
-  if (!Number.isInteger(id) || id < 1) {
-    throw new Error('Invalid video id')
-  }
-
-  return id
-}
-
-function getRedirectTarget(formData: FormData) {
-  const redirectTo = formData.get('redirectTo')
-
-  if (
-    typeof redirectTo === 'string' &&
-    redirectTo.startsWith('/') &&
-    !redirectTo.startsWith('//')
-  ) {
-    return redirectTo
-  }
-
-  return '/'
 }

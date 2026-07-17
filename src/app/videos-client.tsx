@@ -1,9 +1,10 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Video } from '@/types/database'
+import VideoCard from './video-card'
 
 const DEFAULT_PAGE_SIZE = 20
 
@@ -11,9 +12,12 @@ type VideosClientProps = {
   videos: Video[]
   error: string | null
   selectedCategory: string | null
+  categoryParam: string | null
+  showAll: boolean
   showArchived: boolean
   currentPage: number
   totalPages: number
+  totalCount: number
   pageSize: number
   pageSizeOptions: number[]
 }
@@ -22,102 +26,125 @@ export default function VideosClient({
   videos,
   error,
   selectedCategory,
+  categoryParam,
+  showAll,
   showArchived,
   currentPage,
   totalPages,
+  totalCount,
   pageSize,
   pageSizeOptions,
 }: VideosClientProps) {
   const router = useRouter()
+  const [searchTerm, setSearchTerm] = useState('')
   const hasPreviousPage = currentPage > 1
   const hasNextPage = currentPage < totalPages
-  const listHref = buildPageHref(selectedCategory, showArchived, currentPage, pageSize)
+  const listHref = buildPageHref(categoryParam, showArchived, currentPage, pageSize)
+
+  const term = searchTerm.trim().toLowerCase()
+  const filteredVideos = useMemo(() => {
+    if (!term) {
+      return videos
+    }
+
+    return videos.filter(
+      (video) =>
+        (video.title ?? '').toLowerCase().includes(term) ||
+        (video.videoChannelTitle ?? '').toLowerCase().includes(term)
+    )
+  }, [videos, term])
+
+  const sectionEyebrow = showArchived ? 'Archive' : 'Codex Feed'
+  const sectionTitle = showArchived
+    ? 'Archived'
+    : showAll
+      ? 'All Videos'
+      : !selectedCategory || selectedCategory === 'None'
+        ? 'Uncategorized'
+        : selectedCategory
+
   return (
-    <div className="p-4 sm:p-6">
+    <div className="mx-auto max-w-[1400px] px-6 pt-8 pb-20">
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200">
+        <div className="mb-6 rounded-lg border border-red-900/60 bg-red-950/30 p-4 text-red-200">
           {error}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6 md:grid-cols-4 lg:grid-cols-5">
-        {videos.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-zinc-600 dark:text-zinc-400">
-              {showArchived
-                ? 'No archived videos found.'
-                : 'No videos found in this category.'}
-            </p>
+      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="mb-1.5 text-[11px] font-bold tracking-[0.2em] text-qw-accent uppercase">
+            {sectionEyebrow}
           </div>
-        ) : (
-          videos.map((video, index) => (
-            <Link
-              key={video.id}
-              href={`/video/${video.videoId || video.id}?from=${encodeURIComponent(listHref)}`}
-              className="overflow-hidden rounded-lg border border-zinc-200 bg-white transition-all hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:hover:shadow-lg/10"
-            >
-              <article className="h-full">
-                <div className="flex h-full flex-col">
-                  <div className="w-full bg-zinc-200 dark:bg-zinc-800">
-                    {video.thumbnail ? (
-                      <Image
-                        src={`https://i.ytimg.com/vi/${video.videoId || video.id}/mqdefault.jpg`}
-                        alt={video.title || 'Video thumbnail'}
-                        width={320}
-                        height={180}
-                        loading={index < 3 ? 'eager' : 'lazy'}
-                        className="w-full"
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center text-zinc-400">
-                        No Image
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-1 flex-col p-4">
-                    <div>
-                      <h3 className="mb-1 line-clamp-2 text-lg font-bold text-zinc-900 dark:text-zinc-50">
-                        {video.title}
-                      </h3>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-                        <span>{video.videoChannelTitle}</span>
-                        {video.videoPublished && (
-                          <span>{formatPublishedDate(video.videoPublished)}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-3 flex justify-end text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                      {video.read && (
-                        <span className="inline-flex items-center gap-1">
-                          <span aria-hidden="true">✓</span>
-                          <span>Read</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </article>
-            </Link>
-          ))
-        )}
+          <h1 className="font-display text-[30px] font-semibold text-qw-fg-1">
+            {sectionTitle}
+          </h1>
+          <div className="mt-1.5 text-[13px] text-qw-muted-2">
+            {totalCount} video{totalCount === 1 ? '' : 's'}
+          </div>
+        </div>
+        <div className="flex h-[42px] w-[280px] max-w-full items-center gap-2.5 rounded-md border border-qw-border bg-qw-surface-1 px-3">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#4F6A8F"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="shrink-0"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search title or channel"
+            className="w-full bg-transparent text-[13px] text-qw-fg-1 outline-none placeholder:text-qw-muted-2"
+          />
+        </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
-        <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+      {filteredVideos.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-qw-border px-6 py-20 text-center">
+          <p className="text-sm text-qw-muted-1">
+            {showArchived
+              ? 'No archived videos found.'
+              : term
+                ? 'No videos match your search.'
+                : 'No videos found in this category.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5">
+          {filteredVideos.map((video, index) => (
+            <VideoCard
+              key={video.id}
+              video={video}
+              listHref={listHref}
+              priority={index < 3}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+        <label className="flex items-center gap-2 text-sm text-qw-muted-1">
           <select
             value={pageSize}
             onChange={(event) =>
               router.push(
                 buildPageHref(
-                  selectedCategory,
+                  categoryParam,
                   showArchived,
                   1,
                   Number(event.target.value)
                 )
               )
             }
-            className="h-9 rounded-md border border-zinc-300 bg-white px-2 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            className="h-9 rounded-md border border-qw-border bg-qw-surface-1 px-2 text-sm font-medium text-qw-fg-2"
           >
             {pageSizeOptions.map((option) => (
               <option key={option} value={option}>
@@ -132,13 +159,13 @@ export default function VideosClient({
             <Link
               href={
                 hasPreviousPage
-                  ? buildPageHref(selectedCategory, showArchived, currentPage - 1, pageSize)
-                  : buildPageHref(selectedCategory, showArchived, currentPage, pageSize)
+                  ? buildPageHref(categoryParam, showArchived, currentPage - 1, pageSize)
+                  : buildPageHref(categoryParam, showArchived, currentPage, pageSize)
               }
               aria-disabled={!hasPreviousPage}
-              className={`inline-flex h-9 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 ${
+              className={`inline-flex h-9 items-center justify-center rounded-md border border-qw-border bg-qw-surface-1 px-3 text-sm font-medium text-qw-fg-2 transition-colors ${
                 hasPreviousPage
-                  ? 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                  ? 'hover:border-qw-border-strong hover:bg-qw-surface-2'
                   : 'pointer-events-none opacity-40'
               }`}
             >
@@ -147,21 +174,18 @@ export default function VideosClient({
 
             {getPageNumbers(currentPage, totalPages).map((item, index) =>
               item === 'ellipsis' ? (
-                <span
-                  key={`ellipsis-${index}`}
-                  className="px-2 text-sm text-zinc-500 dark:text-zinc-400"
-                >
+                <span key={`ellipsis-${index}`} className="px-2 text-sm text-qw-muted-2">
                   …
                 </span>
               ) : (
                 <Link
                   key={item}
-                  href={buildPageHref(selectedCategory, showArchived, item, pageSize)}
+                  href={buildPageHref(categoryParam, showArchived, item, pageSize)}
                   aria-current={item === currentPage ? 'page' : undefined}
                   className={`inline-flex h-9 w-9 items-center justify-center rounded-md border text-sm font-medium transition-colors ${
                     item === currentPage
-                      ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900'
-                      : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800'
+                      ? 'border-qw-accent bg-qw-accent text-qw-bg'
+                      : 'border-qw-border bg-qw-surface-1 text-qw-fg-2 hover:border-qw-border-strong hover:bg-qw-surface-2'
                   }`}
                 >
                   {item}
@@ -172,13 +196,13 @@ export default function VideosClient({
             <Link
               href={
                 hasNextPage
-                  ? buildPageHref(selectedCategory, showArchived, currentPage + 1, pageSize)
-                  : buildPageHref(selectedCategory, showArchived, currentPage, pageSize)
+                  ? buildPageHref(categoryParam, showArchived, currentPage + 1, pageSize)
+                  : buildPageHref(categoryParam, showArchived, currentPage, pageSize)
               }
               aria-disabled={!hasNextPage}
-              className={`inline-flex h-9 items-center justify-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 ${
+              className={`inline-flex h-9 items-center justify-center rounded-md border border-qw-border bg-qw-surface-1 px-3 text-sm font-medium text-qw-fg-2 transition-colors ${
                 hasNextPage
-                  ? 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                  ? 'hover:border-qw-border-strong hover:bg-qw-surface-2'
                   : 'pointer-events-none opacity-40'
               }`}
             >
@@ -192,7 +216,7 @@ export default function VideosClient({
 }
 
 function buildPageHref(
-  category: string | null,
+  categoryParam: string | null,
   showArchived: boolean,
   page: number,
   pageSize: number
@@ -201,8 +225,8 @@ function buildPageHref(
 
   if (showArchived) {
     params.set('archived', 'true')
-  } else if (category) {
-    params.set('category', category)
+  } else if (categoryParam) {
+    params.set('category', categoryParam)
   }
 
   if (page > 1) {
@@ -248,12 +272,4 @@ function getPageNumbers(currentPage: number, totalPages: number) {
   }
 
   return pages
-}
-
-function formatPublishedDate(date: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(date))
 }
