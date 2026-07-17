@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #07090f;
+  --foreground: #e8eef8;
 }
 
 @theme inline {
@@ -10,17 +10,74 @@
   --color-foreground: var(--foreground);
   --font-sans: Arial, Helvetica, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* QuietWizard Studios design tokens */
+  --font-display: var(--font-cinzel), serif;
+  --font-body: var(--font-eb-garamond), Georgia, serif;
+  --font-ui: var(--font-space-grotesk), Arial, Helvetica, sans-serif;
+
+  --color-qw-bg: #07090f;
+  --color-qw-sidebar: #0a0d16;
+  --color-qw-surface-1: #0d1220;
+  --color-qw-surface-2: #131b2e;
+
+  --color-qw-border: #1c2b44;
+  --color-qw-border-strong: #253652;
+
+  --color-qw-fg-1: #e8eef8;
+  --color-qw-fg-2: #a8b8cc;
+  --color-qw-muted-1: #7590af;
+  --color-qw-muted-2: #4f6a8f;
+  --color-qw-muted-3: #344d6e;
+
+  --color-qw-brand: #1e5fd4;
+  --color-qw-brand-light: #4b8ef5;
+  --color-qw-brand-dark: #0f3490;
+  --color-qw-accent: #5bb3ff;
+
+  --color-qw-success: #3dd68c;
+  --color-qw-danger: #f05252;
+  --color-qw-danger-text: #f09292;
+
+  --ease-qw: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-ui), Arial, Helvetica, sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-qw-sidebar);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-qw-border);
+  border-radius: 3px;
+}
+
+@keyframes qws-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes qws-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
