@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { createClient } from '@/utils/supabase/server'
+import { getCurrentUser } from '@/utils/supabase/get-current-user'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { getCategories } from '@/utils/get-categories'
 import type { Video } from '@/types/database'
@@ -32,10 +32,7 @@ export default async function VideoDetailPage({
   const { id } = await params
   const { from } = await searchParams
   const backHref = isSafeRedirectTarget(from) ? from : '/'
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     redirect('/login')

@@ -19,6 +19,8 @@ type SidebarContentProps = {
   onNavigate?: () => void
   showCloseButton?: boolean
   onClose?: () => void
+  showCollapseButton?: boolean
+  onCollapse?: () => void
   onSignOut: () => void
 }
 
@@ -32,6 +34,8 @@ export default function SidebarContent({
   onNavigate,
   showCloseButton = false,
   onClose,
+  showCollapseButton = false,
+  onCollapse,
   onSignOut,
 }: SidebarContentProps) {
   const router = useRouter()
@@ -73,6 +77,29 @@ export default function SidebarContent({
             </div>
           </div>
         </div>
+        {showCollapseButton && (
+          <button
+            type="button"
+            aria-label="Hide navigation menu"
+            onClick={onCollapse}
+            className="flex size-8 shrink-0 items-center justify-center rounded-md border border-qw-border bg-qw-surface-1 text-qw-muted-1 transition-colors hover:text-qw-fg-2"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+              <polyline points="14 9 11 12 14 15" />
+            </svg>
+          </button>
+        )}
         {showCloseButton && (
           <button
             type="button"
@@ -98,13 +125,14 @@ export default function SidebarContent({
 
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
         <NavLink
-          href="/?category=all"
-          active={isAllActive}
-          count={allCount}
+          href="/"
+          active={isUncategorizedActive}
+          count={uncategorizedCount}
           onNavigate={onNavigate}
-          icon={<GridIcon />}
+          onDropVideo={(videoId) => handleDropCategory(videoId, 'None')}
+          icon={<FolderIcon />}
         >
-          All Videos
+          New
         </NavLink>
 
         {categories.map((category) => (
@@ -122,14 +150,13 @@ export default function SidebarContent({
         ))}
 
         <NavLink
-          href="/"
-          active={isUncategorizedActive}
-          count={uncategorizedCount}
+          href="/?category=all"
+          active={isAllActive}
+          count={allCount}
           onNavigate={onNavigate}
-          onDropVideo={(videoId) => handleDropCategory(videoId, 'None')}
-          icon={<FolderIcon />}
+          icon={<GridIcon />}
         >
-          Uncategorized
+          All Videos
         </NavLink>
       </nav>
 

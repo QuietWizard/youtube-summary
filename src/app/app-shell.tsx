@@ -7,14 +7,18 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import SidebarContent from './sidebar-content'
 import type { CategoryNavItem } from './layout'
+import { NAV_COLLAPSED_COOKIE } from './nav-cookie'
 
 const supabase = createClient()
+
+const NAV_COLLAPSED_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
 
 type AppShellProps = {
   categories: CategoryNavItem[]
   allCount: number
   uncategorizedCount: number
   userEmail: string | null
+  initialNavCollapsed: boolean
   children: ReactNode
 }
 
@@ -23,14 +27,24 @@ export default function AppShell({
   allCount,
   uncategorizedCount,
   userEmail,
+  initialNavCollapsed,
   children,
 }: AppShellProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isNavCollapsed, setIsNavCollapsed] = useState(initialNavCollapsed)
   const shouldShowShell =
     pathname !== '/login' && !pathname.startsWith('/auth/callback')
+
+  const toggleNavCollapsed = () => {
+    setIsNavCollapsed((prev) => {
+      const next = !prev
+      document.cookie = `${NAV_COLLAPSED_COOKIE}=${next}; path=/; max-age=${NAV_COLLAPSED_COOKIE_MAX_AGE}; SameSite=Lax`
+      return next
+    })
+  }
 
   const { activeCategory, isArchivedActive } = resolveActiveContext(
     pathname,
@@ -112,19 +126,49 @@ export default function AppShell({
       )}
 
       {/* Desktop / tablet sidebar */}
-      <aside className="fixed top-0 left-0 z-20 hidden h-screen w-[264px] flex-col border-r border-qw-border bg-qw-sidebar md:flex">
-        <SidebarContent
-          categories={categories}
-          allCount={allCount}
-          uncategorizedCount={uncategorizedCount}
-          userEmail={userEmail}
-          activeCategory={activeCategory}
-          isArchivedActive={isArchivedActive}
-          onSignOut={handleSignOut}
-        />
-      </aside>
+      {!isNavCollapsed && (
+        <aside className="fixed top-0 left-0 z-20 hidden h-screen w-[264px] flex-col border-r border-qw-border bg-qw-sidebar md:flex">
+          <SidebarContent
+            categories={categories}
+            allCount={allCount}
+            uncategorizedCount={uncategorizedCount}
+            userEmail={userEmail}
+            activeCategory={activeCategory}
+            isArchivedActive={isArchivedActive}
+            onSignOut={handleSignOut}
+            showCollapseButton
+            onCollapse={toggleNavCollapsed}
+          />
+        </aside>
+      )}
 
-      <main className="min-w-0 md:ml-[264px]">{children}</main>
+      {/* Collapsed nav toggle (tablet / desktop only) */}
+      {isNavCollapsed && (
+        <button
+          type="button"
+          aria-label="Show navigation menu"
+          onClick={toggleNavCollapsed}
+          className="fixed top-4 left-4 z-20 hidden size-10 items-center justify-center rounded-md border border-qw-border bg-qw-surface-1 text-qw-muted-1 transition-colors hover:text-qw-fg-2 md:flex"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+      )}
+
+      <main className={`min-w-0 ${isNavCollapsed ? '' : 'md:ml-[264px]'}`}>
+        {children}
+      </main>
     </div>
   )
 }

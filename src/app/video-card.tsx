@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import type { DragEvent } from 'react'
-import type { Video } from '@/types/database'
+import type { VideoListItem } from './page'
 import {
   archiveVideo,
   markVideoAsRead,
@@ -16,7 +16,7 @@ import {
 import { VIDEO_DRAG_MIME_TYPE } from './video-drag'
 
 type VideoCardProps = {
-  video: Video
+  video: VideoListItem
   categories: string[]
   listHref: string
   priority: boolean
