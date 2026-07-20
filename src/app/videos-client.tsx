@@ -1,15 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Video } from '@/types/database'
+import type { VideoListItem } from './page'
 import VideoCard from './video-card'
+import { PAGE_SIZE_COOKIE, DEFAULT_PAGE_SIZE } from './page-size-cookie'
 
-const DEFAULT_PAGE_SIZE = 20
+const PAGE_SIZE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
+const SEARCH_DEBOUNCE_MS = 350
 
 type VideosClientProps = {
-  videos: Video[]
+  videos: VideoListItem[]
   error: string | null
   categories: string[]
   selectedCategory: string | null
@@ -21,6 +23,7 @@ type VideosClientProps = {
   totalCount: number
   pageSize: number
   pageSizeOptions: number[]
+  searchTerm: string | null
 }
 
 export default function VideosClient({
@@ -36,25 +39,48 @@ export default function VideosClient({
   totalCount,
   pageSize,
   pageSizeOptions,
+  searchTerm,
 }: VideosClientProps) {
   const router = useRouter()
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchInput, setSearchInput] = useState(searchTerm ?? '')
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasPreviousPage = currentPage > 1
   const hasNextPage = currentPage < totalPages
-  const listHref = buildPageHref(categoryParam, showArchived, currentPage, pageSize)
+  const listHref = buildPageHref(
+    categoryParam,
+    showArchived,
+    currentPage,
+    pageSize,
+    searchTerm
+  )
 
-  const term = searchTerm.trim().toLowerCase()
-  const filteredVideos = useMemo(() => {
-    if (!term) {
-      return videos
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current)
+      }
+    }
+  }, [])
+
+  function handleSearchChange(value: string) {
+    setSearchInput(value)
+
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
     }
 
-    return videos.filter(
-      (video) =>
-        (video.title ?? '').toLowerCase().includes(term) ||
-        (video.videoChannelTitle ?? '').toLowerCase().includes(term)
-    )
-  }, [videos, term])
+    searchDebounceRef.current = setTimeout(() => {
+      router.push(
+        buildPageHref(
+          categoryParam,
+          showArchived,
+          1,
+          pageSize,
+          value.trim() || null
+        )
+      )
+    }, SEARCH_DEBOUNCE_MS)
+  }
 
   const isUncategorizedView =
     !showArchived && !showAll && (!selectedCategory || selectedCategory === 'None')
@@ -105,27 +131,27 @@ export default function VideosClient({
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search title or channel"
+            value={searchInput}
+            onChange={(event) => handleSearchChange(event.target.value)}
+            placeholder="Search title, channel, or summary"
             className="w-full bg-transparent text-[13px] text-qw-fg-1 outline-none placeholder:text-qw-muted-2"
           />
         </div>
       </div>
 
-      {filteredVideos.length === 0 ? (
+      {videos.length === 0 ? (
         <div className="rounded-lg border border-dashed border-qw-border px-6 py-20 text-center">
           <p className="text-sm text-qw-muted-1">
             {showArchived
               ? 'No archived videos found.'
-              : term
+              : searchTerm
                 ? 'No videos match your search.'
                 : 'No videos found in this category.'}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5">
-          {filteredVideos.map((video, index) => (
+          {videos.map((video, index) => (
             <VideoCard
               key={video.id}
               video={video}
@@ -141,16 +167,19 @@ export default function VideosClient({
         <label className="flex items-center gap-2 text-sm text-qw-muted-1">
           <select
             value={pageSize}
-            onChange={(event) =>
+            onChange={(event) => {
+              const nextPageSize = Number(event.target.value)
+              document.cookie = `${PAGE_SIZE_COOKIE}=${nextPageSize}; path=/; max-age=${PAGE_SIZE_COOKIE_MAX_AGE}; SameSite=Lax`
               router.push(
                 buildPageHref(
                   categoryParam,
                   showArchived,
                   1,
-                  Number(event.target.value)
+                  nextPageSize,
+                  searchTerm
                 )
               )
-            }
+            }}
             className="h-9 rounded-md border border-qw-border bg-qw-surface-1 px-2 text-sm font-medium text-qw-fg-2"
           >
             {pageSizeOptions.map((option) => (
@@ -166,9 +195,10 @@ export default function VideosClient({
             <Link
               href={
                 hasPreviousPage
-                  ? buildPageHref(categoryParam, showArchived, currentPage - 1, pageSize)
-                  : buildPageHref(categoryParam, showArchived, currentPage, pageSize)
+                  ? buildPageHref(categoryParam, showArchived, currentPage - 1, pageSize, searchTerm)
+                  : buildPageHref(categoryParam, showArchived, currentPage, pageSize, searchTerm)
               }
+              prefetch={hasPreviousPage}
               aria-disabled={!hasPreviousPage}
               className={`inline-flex h-9 items-center justify-center rounded-md border border-qw-border bg-qw-surface-1 px-3 text-sm font-medium text-qw-fg-2 transition-colors ${
                 hasPreviousPage
@@ -187,7 +217,8 @@ export default function VideosClient({
               ) : (
                 <Link
                   key={item}
-                  href={buildPageHref(categoryParam, showArchived, item, pageSize)}
+                  href={buildPageHref(categoryParam, showArchived, item, pageSize, searchTerm)}
+                  prefetch={Math.abs(item - currentPage) <= 1}
                   aria-current={item === currentPage ? 'page' : undefined}
                   className={`inline-flex h-9 w-9 items-center justify-center rounded-md border text-sm font-medium transition-colors ${
                     item === currentPage
@@ -203,9 +234,10 @@ export default function VideosClient({
             <Link
               href={
                 hasNextPage
-                  ? buildPageHref(categoryParam, showArchived, currentPage + 1, pageSize)
-                  : buildPageHref(categoryParam, showArchived, currentPage, pageSize)
+                  ? buildPageHref(categoryParam, showArchived, currentPage + 1, pageSize, searchTerm)
+                  : buildPageHref(categoryParam, showArchived, currentPage, pageSize, searchTerm)
               }
+              prefetch={hasNextPage}
               aria-disabled={!hasNextPage}
               className={`inline-flex h-9 items-center justify-center rounded-md border border-qw-border bg-qw-surface-1 px-3 text-sm font-medium text-qw-fg-2 transition-colors ${
                 hasNextPage
@@ -226,7 +258,8 @@ function buildPageHref(
   categoryParam: string | null,
   showArchived: boolean,
   page: number,
-  pageSize: number
+  pageSize: number,
+  search: string | null
 ) {
   const params = new URLSearchParams()
 
@@ -242,6 +275,10 @@ function buildPageHref(
 
   if (pageSize !== DEFAULT_PAGE_SIZE) {
     params.set('pageSize', String(pageSize))
+  }
+
+  if (search) {
+    params.set('search', search)
   }
 
   const query = params.toString()

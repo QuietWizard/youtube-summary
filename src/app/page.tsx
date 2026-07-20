@@ -1,13 +1,35 @@
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import VideosClient from './videos-client'
 import { createAdminClient } from '@/utils/supabase/admin'
-import { createClient } from '@/utils/supabase/server'
+import { getCurrentUser } from '@/utils/supabase/get-current-user'
 import { getCategories } from '@/utils/get-categories'
 import type { Video } from '@/types/database'
+import {
+  PAGE_SIZE_COOKIE,
+  PAGE_SIZE_OPTIONS,
+  DEFAULT_PAGE_SIZE,
+} from './page-size-cookie'
 
 const UNCATEGORIZED = 'None'
-const PAGE_SIZE_OPTIONS = [20, 50, 100]
-const DEFAULT_PAGE_SIZE = 20
+
+// Only the columns the video grid/list actually render — `summary` in
+// particular can be several KB per row and is only needed on the detail page.
+const VIDEO_LIST_FIELDS =
+  'id, videoId, title, thumbnail, videoChannelTitle, videoPublished, category, read, archived'
+
+export type VideoListItem = Pick<
+  Video,
+  | 'id'
+  | 'videoId'
+  | 'title'
+  | 'thumbnail'
+  | 'videoChannelTitle'
+  | 'videoPublished'
+  | 'category'
+  | 'read'
+  | 'archived'
+>
 
 export default async function Home({
   searchParams,
@@ -17,25 +39,36 @@ export default async function Home({
     page?: string
     archived?: string
     pageSize?: string
+    search?: string
   }>
 }) {
-  const { category, page, archived, pageSize: pageSizeParam } = await searchParams
+  const {
+    category,
+    page,
+    archived,
+    pageSize: pageSizeParam,
+    search,
+  } = await searchParams
   const rawCategory = category?.trim() || null
   const showArchived = archived === 'true'
   const showAll = !showArchived && rawCategory?.toLowerCase() === 'all'
   const selectedCategory =
     !showArchived && !showAll && !rawCategory ? UNCATEGORIZED : rawCategory
+  const searchTerm = search?.trim() || null
+
+  const cookieStore = await cookies()
+  const cookiePageSize = Number(cookieStore.get(PAGE_SIZE_COOKIE)?.value)
+  const fallbackPageSize = PAGE_SIZE_OPTIONS.includes(cookiePageSize)
+    ? cookiePageSize
+    : DEFAULT_PAGE_SIZE
   const pageSize = PAGE_SIZE_OPTIONS.includes(Number(pageSizeParam))
     ? Number(pageSizeParam)
-    : DEFAULT_PAGE_SIZE
+    : fallbackPageSize
   const currentPage = Math.max(1, Number(page) || 1)
   const from = (currentPage - 1) * pageSize
   const to = from + pageSize - 1
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     redirect('/login')
@@ -44,7 +77,7 @@ export default async function Home({
   const adminSupabase = createAdminClient()
   let query = adminSupabase
     .from('YouTube-Summary')
-    .select('*', { count: 'exact' })
+    .select(VIDEO_LIST_FIELDS, { count: 'exact' })
 
   query = showArchived
     ? query.eq('archived', true)
@@ -54,6 +87,16 @@ export default async function Home({
     query = query.or('category.is.null,category.eq.,category.eq.None')
   } else if (!showAll && selectedCategory) {
     query = query.eq('category', selectedCategory)
+  }
+
+  if (searchTerm) {
+    // Search title, channel, and summary text server-side so the (potentially
+    // large) summary column never needs to be sent to the client just to
+    // support search.
+    const pattern = toIlikePattern(searchTerm)
+    query = query.or(
+      `title.ilike.${pattern},videoChannelTitle.ilike.${pattern},summary.ilike.${pattern}`
+    )
   }
 
   const [{ data, error, count }, categories] = await Promise.all([
@@ -71,7 +114,7 @@ export default async function Home({
 
   return (
     <VideosClient
-      videos={(data ?? []) as Video[]}
+      videos={(data ?? []) as VideoListItem[]}
       error={error?.message ?? null}
       categories={categories}
       selectedCategory={selectedCategory}
@@ -83,6 +126,24 @@ export default async function Home({
       totalCount={totalCount}
       pageSize={pageSize}
       pageSizeOptions={PAGE_SIZE_OPTIONS}
+      searchTerm={searchTerm}
     />
   )
+}
+
+// PostgREST's `ilike` matches `%`/`_` as wildcards and `\` as their escape
+// character, so a literal search for e.g. "50%" must escape it first. The
+// resulting pattern is then embedded in an `.or(...)` filter string, where
+// `,`, `(`, `)`, and `"` are structural characters — if the (already-escaped)
+// pattern still contains any of those, it must be double-quoted to be read
+// back as a single literal value instead of breaking the filter.
+function toIlikePattern(term: string) {
+  const escaped = term.replace(/([\\%_])/g, '\\$1')
+  const pattern = `%${escaped}%`
+
+  if (/[,()"\\]/.test(pattern)) {
+    return `"${pattern.replace(/"/g, '\\"')}"`
+  }
+
+  return pattern
 }
