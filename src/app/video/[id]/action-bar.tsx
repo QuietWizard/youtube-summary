@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   archiveVideo,
   createCategoryAndAssignToVideo,
@@ -10,9 +10,14 @@ import {
   updateVideoCategory,
 } from '@/app/actions'
 import { useFontSize } from './font-size-context'
+import { useVideoSync } from '@/app/video-sync-context'
+import { useOptimisticMutation } from '@/utils/use-optimistic-mutation'
+import { useToast } from '@/components/ui/toast-provider'
+import { computeNavCountsAdjustment, negateAdjustment } from '@/utils/video-view-filter'
 
 type ActionBarProps = {
   videoId: number
+  title: string | null
   backHref: string
   initialCategory: string
   categories: string[]
@@ -21,6 +26,7 @@ type ActionBarProps = {
 
 export default function ActionBar({
   videoId,
+  title,
   backHref,
   initialCategory,
   categories,
@@ -28,11 +34,13 @@ export default function ActionBar({
 }: ActionBarProps) {
   const router = useRouter()
   const { scale, increase, decrease, reset } = useFontSize()
+  const { adjustCounts } = useVideoSync()
+  const { mutate } = useOptimisticMutation()
+  const { showError } = useToast()
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState(initialCategory)
   const [newCategory, setNewCategory] = useState('')
   const [isRead, setIsRead] = useState(initialRead)
-  const [isPending, startTransition] = useTransition()
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -60,13 +68,23 @@ export default function ActionBar({
 
     const previous = selectedCategory
     setSelectedCategory(category)
+    const adjustment = computeNavCountsAdjustment(
+      { archived: false, category: previous },
+      { archived: false, category }
+    )
+    adjustCounts(adjustment)
 
-    startTransition(async () => {
-      try {
-        await updateVideoCategory(videoId, category)
-      } catch {
-        setSelectedCategory(previous)
+    mutate({ run: () => updateVideoCategory(videoId, category) }).then((outcome) => {
+      if (outcome.ok) {
+        return
       }
+      setSelectedCategory(previous)
+      adjustCounts(negateAdjustment(adjustment))
+      showError(
+        `Couldn't move "${title ?? 'this video'}" to ${
+          category === 'None' ? 'Uncategorized' : category
+        }.`
+      )
     })
   }
 
@@ -90,31 +108,53 @@ export default function ActionBar({
     setNewCategory('')
     const previous = selectedCategory
     setSelectedCategory(trimmed)
+    const adjustment = computeNavCountsAdjustment(
+      { archived: false, category: previous },
+      { archived: false, category: trimmed }
+    )
+    adjustCounts(adjustment)
 
-    startTransition(async () => {
-      try {
-        await createCategoryAndAssignToVideo(videoId, trimmed)
-      } catch {
-        setSelectedCategory(previous)
+    // No automatic retry here: this action inserts a new row into the
+    // Categories table before updating the video, and a blind retry after a
+    // dropped response could double-insert if `category` has no unique
+    // constraint (unverifiable from this repo). A single attempt with the
+    // usual rollback is the safe choice.
+    mutate(
+      { run: () => createCategoryAndAssignToVideo(videoId, trimmed) },
+      { retries: 0 }
+    ).then((outcome) => {
+      if (outcome.ok) {
+        return
       }
+      setSelectedCategory(previous)
+      adjustCounts(negateAdjustment(adjustment))
+      showError(`Couldn't create category "${trimmed}".`)
     })
   }
 
   function handleMarkRead() {
     setIsRead(true)
-    startTransition(async () => {
-      try {
-        await markVideoAsRead(videoId)
-      } catch {
+    mutate({ run: () => markVideoAsRead(videoId) }).then((outcome) => {
+      if (!outcome.ok) {
         setIsRead(false)
+        showError(`Couldn't mark "${title ?? 'this video'}" as read.`)
       }
     })
   }
 
   function handleArchive() {
-    startTransition(async () => {
-      await archiveVideo(videoId)
-      router.push(backHref)
+    const adjustment = computeNavCountsAdjustment(
+      { archived: false, category: selectedCategory },
+      { archived: true, category: selectedCategory }
+    )
+    adjustCounts(adjustment)
+    router.push(backHref)
+
+    mutate({ run: () => archiveVideo(videoId) }).then((outcome) => {
+      if (!outcome.ok) {
+        adjustCounts(negateAdjustment(adjustment))
+        showError(`Couldn't archive "${title ?? 'this video'}". It was left unarchived.`)
+      }
     })
   }
 
@@ -256,8 +296,7 @@ export default function ActionBar({
         <button
           type="button"
           onClick={handleArchive}
-          disabled={isPending}
-          className="h-[38px] rounded-md border border-qw-danger/30 bg-qw-danger/[0.08] px-3.5 text-xs font-semibold text-qw-danger-text transition-colors hover:bg-qw-danger/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-[38px] rounded-md border border-qw-danger/30 bg-qw-danger/[0.08] px-3.5 text-xs font-semibold text-qw-danger-text transition-colors hover:bg-qw-danger/[0.16]"
         >
           Archive
         </button>

@@ -2,17 +2,9 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import type { VideoListItem } from './page'
-import {
-  archiveVideo,
-  markVideoAsRead,
-  markVideoAsUnread,
-  unarchiveVideo,
-  updateVideoCategory,
-} from './actions'
 import { VIDEO_DRAG_MIME_TYPE } from './video-drag'
 
 type VideoCardProps = {
@@ -20,6 +12,9 @@ type VideoCardProps = {
   categories: string[]
   listHref: string
   priority: boolean
+  onToggleRead: (id: number) => void
+  onToggleArchive: (id: number) => void
+  onSelectCategory: (id: number, category: string) => void
 }
 
 export default function VideoCard({
@@ -27,14 +22,15 @@ export default function VideoCard({
   categories,
   listHref,
   priority,
+  onToggleRead,
+  onToggleArchive,
+  onSelectCategory,
 }: VideoCardProps) {
-  const router = useRouter()
-  const [isRead, setIsRead] = useState(video.read === true)
-  const [isArchived, setIsArchived] = useState(video.archived === true)
-  const [category, setCategory] = useState(video.category?.trim() || 'None')
+  const isRead = video.read === true
+  const isArchived = video.archived === true
+  const category = video.category?.trim() || 'None'
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const [, startTransition] = useTransition()
   const categoryMenuRef = useRef<HTMLDivElement>(null)
 
   const videoKey = video.videoId || String(video.id)
@@ -58,24 +54,11 @@ export default function VideoCard({
   }, [isCategoryMenuOpen])
 
   function toggleRead() {
-    const next = !isRead
-    setIsRead(next)
-    startTransition(async () => {
-      await (next ? markVideoAsRead(video.id) : markVideoAsUnread(video.id))
-      router.refresh()
-    })
+    onToggleRead(video.id)
   }
 
   function toggleArchive() {
-    const next = !isArchived
-    setIsArchived(next)
-    if (next) {
-      setIsRead(true)
-    }
-    startTransition(async () => {
-      await (next ? archiveVideo(video.id) : unarchiveVideo(video.id))
-      router.refresh()
-    })
+    onToggleArchive(video.id)
   }
 
   function handleDragStart(event: DragEvent<HTMLDivElement>) {
@@ -90,21 +73,7 @@ export default function VideoCard({
 
   function selectCategory(next: string) {
     setIsCategoryMenuOpen(false)
-
-    if (next === category) {
-      return
-    }
-
-    const previous = category
-    setCategory(next)
-    startTransition(async () => {
-      try {
-        await updateVideoCategory(video.id, next)
-        router.refresh()
-      } catch {
-        setCategory(previous)
-      }
-    })
+    onSelectCategory(video.id, next)
   }
 
   return (

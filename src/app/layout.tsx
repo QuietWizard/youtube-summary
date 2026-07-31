@@ -95,7 +95,7 @@ async function getNavData(): Promise<{
   const [categoryNames, { data: videoRows }] = await Promise.all([
     getCategories(),
     adminSupabase
-      .from("YouTube-Summary")
+      .from("yts_info")
       .select("category, archived")
       .or("archived.is.null,archived.eq.false"),
   ]);

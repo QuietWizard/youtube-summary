@@ -56,7 +56,7 @@ export async function createCategoryAndAssignToVideo(
   const adminClient = await createAdminClient()
 
   const { error: insertError } = await adminClient
-    .from('Categories')
+    .from('yts_categories')
     .insert({ category: trimmed })
 
   if (insertError) {
@@ -64,7 +64,7 @@ export async function createCategoryAndAssignToVideo(
   }
 
   const { error: updateError } = await adminClient
-    .from('YouTube-Summary')
+    .from('yts_info')
     .update({ category: trimmed })
     .eq('id', videoId)
 
@@ -95,7 +95,7 @@ async function updateVideo(
 
   const adminClient = await createAdminClient()
   const { error } = await adminClient
-    .from('YouTube-Summary')
+    .from('yts_info')
     .update(values)
     .eq('id', id)
 

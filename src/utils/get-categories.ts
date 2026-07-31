@@ -3,7 +3,7 @@ import { createAdminClient } from '@/utils/supabase/admin'
 
 export const getCategories = cache(async (): Promise<string[]> => {
   const supabase = createAdminClient()
-  const { data, error } = await supabase.from('Categories').select('category')
+  const { data, error } = await supabase.from('yts_categories').select('category')
 
   if (error) {
     return []

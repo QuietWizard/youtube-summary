@@ -2,17 +2,15 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import type { DragEvent, ReactNode } from 'react'
 import { archiveVideo, updateVideoCategory } from './actions'
-import type { CategoryNavItem } from './layout'
+import { useVideoSync } from './video-sync-context'
+import { useOptimisticMutation } from '@/utils/use-optimistic-mutation'
+import { useToast } from '@/components/ui/toast-provider'
 import { VIDEO_DRAG_MIME_TYPE } from './video-drag'
 
 type SidebarContentProps = {
-  categories: CategoryNavItem[]
-  allCount: number
-  uncategorizedCount: number
   userEmail: string | null
   activeCategory: string | null
   isArchivedActive: boolean
@@ -25,9 +23,6 @@ type SidebarContentProps = {
 }
 
 export default function SidebarContent({
-  categories,
-  allCount,
-  uncategorizedCount,
   userEmail,
   activeCategory,
   isArchivedActive,
@@ -38,22 +33,46 @@ export default function SidebarContent({
   onCollapse,
   onSignOut,
 }: SidebarContentProps) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
+  const { categories, allCount, uncategorizedCount, getListItem, applyListChange, commitListChange, revertListChange } =
+    useVideoSync()
+  const { mutate } = useOptimisticMutation()
+  const { showError } = useToast()
   const isAllActive = !isArchivedActive && activeCategory === 'all'
   const isUncategorizedActive = !isArchivedActive && activeCategory === null
 
   function handleDropCategory(videoId: number, category: string) {
-    startTransition(async () => {
-      await updateVideoCategory(videoId, category)
-      router.refresh()
+    const previous = getListItem(videoId)
+    if (!previous) return
+    const currentCategory = previous.category?.trim() || 'None'
+    if (currentCategory === category) return
+
+    applyListChange(videoId, { category })
+    mutate({ run: () => updateVideoCategory(videoId, category) }).then((outcome) => {
+      if (outcome.ok) {
+        commitListChange(videoId)
+      } else {
+        revertListChange(videoId)
+        showError(
+          `Couldn't move "${previous.title ?? 'this video'}" to ${
+            category === 'None' ? 'Uncategorized' : category
+          }.`
+        )
+      }
     })
   }
 
   function handleDropArchive(videoId: number) {
-    startTransition(async () => {
-      await archiveVideo(videoId)
-      router.refresh()
+    const previous = getListItem(videoId)
+    if (!previous || previous.archived === true) return
+
+    applyListChange(videoId, { archived: true, read: true })
+    mutate({ run: () => archiveVideo(videoId) }).then((outcome) => {
+      if (outcome.ok) {
+        commitListChange(videoId)
+      } else {
+        revertListChange(videoId)
+        showError(`Couldn't archive "${previous.title ?? 'this video'}".`)
+      }
     })
   }
 
