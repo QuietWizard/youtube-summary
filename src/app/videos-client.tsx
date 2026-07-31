@@ -1,14 +1,46 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { VideoListItem } from './page'
 import VideoCard from './video-card'
 import { PAGE_SIZE_COOKIE, DEFAULT_PAGE_SIZE } from './page-size-cookie'
+import { useVideoSync } from './video-sync-context'
+import type { VideoMutationFields } from './video-sync-context'
+import { useOptimisticMutation } from '@/utils/use-optimistic-mutation'
+import { useToast } from '@/components/ui/toast-provider'
+import {
+  isVisibleInView,
+  computeNavCountsAdjustment,
+  negateAdjustment,
+  sumAdjustments,
+} from '@/utils/video-view-filter'
+import type { NavCountsAdjustment } from '@/utils/video-view-filter'
+import {
+  archiveVideo,
+  markVideoAsRead,
+  markVideoAsUnread,
+  unarchiveVideo,
+  updateVideoCategory,
+} from './actions'
 
 const PAGE_SIZE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
 const SEARCH_DEBOUNCE_MS = 350
+
+type PendingEdit =
+  | {
+      type: 'update'
+      original: VideoListItem
+      change: VideoMutationFields
+      adjustment: NavCountsAdjustment
+    }
+  | {
+      type: 'remove'
+      original: VideoListItem
+      index: number
+      adjustment: NavCountsAdjustment
+    }
 
 type VideosClientProps = {
   videos: VideoListItem[]
@@ -36,14 +68,22 @@ export default function VideosClient({
   showArchived,
   currentPage,
   totalPages,
-  totalCount,
+  totalCount: totalCountProp,
   pageSize,
   pageSizeOptions,
   searchTerm,
 }: VideosClientProps) {
   const router = useRouter()
+  const { adjustCounts, registerListView } = useVideoSync()
+  const { mutate } = useOptimisticMutation()
+  const { showError } = useToast()
   const [searchInput, setSearchInput] = useState(searchTerm ?? '')
+  const [items, setItems] = useState<VideoListItem[]>(videos)
+  const [totalCount, setTotalCount] = useState(totalCountProp)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const itemsRef = useRef(items)
+  const pendingRef = useRef(new Map<number, PendingEdit>())
+  const prevVideosRef = useRef(videos)
   const hasPreviousPage = currentPage > 1
   const hasNextPage = currentPage < totalPages
   const listHref = buildPageHref(
@@ -55,12 +95,208 @@ export default function VideosClient({
   )
 
   useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+
+  useEffect(() => {
     return () => {
       if (searchDebounceRef.current) {
         clearTimeout(searchDebounceRef.current)
       }
     }
   }, [])
+
+  // A background revalidation (e.g. pull-to-refresh) can land while this
+  // exact view is still mounted. Merge the fresh snapshot in, but keep any
+  // locally in-flight optimistic intent: a pending removal hasn't
+  // necessarily been picked up by the server yet, and a pending update's
+  // fields should keep winning over a possibly-stale fresh row.
+  useEffect(() => {
+    if (prevVideosRef.current === videos) {
+      return
+    }
+    prevVideosRef.current = videos
+
+    setItems(() => {
+      const merged: VideoListItem[] = []
+      for (const serverItem of videos) {
+        const pending = pendingRef.current.get(serverItem.id)
+        if (pending?.type === 'remove') {
+          continue
+        }
+        merged.push(pending?.type === 'update' ? { ...serverItem, ...pending.change } : serverItem)
+      }
+      return merged
+    })
+
+    const pendingRemovedCount = Array.from(pendingRef.current.values()).filter(
+      (edit) => edit.type === 'remove'
+    ).length
+    setTotalCount(totalCountProp - pendingRemovedCount)
+  }, [videos, totalCountProp])
+
+  const applyChange = useCallback(
+    (id: number, change: VideoMutationFields) => {
+      const item = itemsRef.current.find((video) => video.id === id)
+      if (!item) {
+        return
+      }
+
+      const existingPending = pendingRef.current.get(id)
+      const original = existingPending?.original ?? item
+      const nextItem: VideoListItem = { ...item, ...change }
+      const stepAdjustment = computeNavCountsAdjustment(item, nextItem)
+      const accumulatedAdjustment = existingPending
+        ? sumAdjustments(existingPending.adjustment, stepAdjustment)
+        : stepAdjustment
+      const visible = isVisibleInView(nextItem, {
+        showArchived,
+        showAll,
+        selectedCategory,
+      })
+
+      if (visible) {
+        setItems((current) =>
+          current.map((video) => (video.id === id ? nextItem : video))
+        )
+        pendingRef.current.set(id, {
+          type: 'update',
+          original,
+          change: { read: nextItem.read, archived: nextItem.archived, category: nextItem.category },
+          adjustment: accumulatedAdjustment,
+        })
+      } else {
+        const index = itemsRef.current.findIndex((video) => video.id === id)
+        setItems((current) => current.filter((video) => video.id !== id))
+        setTotalCount((count) => count - 1)
+        pendingRef.current.set(id, {
+          type: 'remove',
+          original,
+          index,
+          adjustment: accumulatedAdjustment,
+        })
+      }
+
+      if (
+        stepAdjustment.allCountDelta ||
+        stepAdjustment.uncategorizedDelta ||
+        stepAdjustment.categoryDeltas
+      ) {
+        adjustCounts(stepAdjustment)
+      }
+    },
+    [showArchived, showAll, selectedCategory, adjustCounts]
+  )
+
+  const commitChange = useCallback((id: number) => {
+    pendingRef.current.delete(id)
+  }, [])
+
+  const revertChange = useCallback(
+    (id: number) => {
+      const pending = pendingRef.current.get(id)
+      if (!pending) {
+        return
+      }
+      pendingRef.current.delete(id)
+
+      if (pending.type === 'remove') {
+        setItems((current) => {
+          const next = [...current]
+          next.splice(Math.min(pending.index, next.length), 0, pending.original)
+          return next
+        })
+        setTotalCount((count) => count + 1)
+      } else {
+        setItems((current) =>
+          current.map((video) => (video.id === id ? pending.original : video))
+        )
+      }
+
+      adjustCounts(negateAdjustment(pending.adjustment))
+    },
+    [adjustCounts]
+  )
+
+  const getItem = useCallback(
+    (id: number) => itemsRef.current.find((video) => video.id === id),
+    []
+  )
+
+  useEffect(() => {
+    return registerListView({ getItem, applyChange, commitChange, revertChange })
+  }, [registerListView, getItem, applyChange, commitChange, revertChange])
+
+  const onToggleRead = useCallback(
+    (id: number) => {
+      const item = getItem(id)
+      if (!item) return
+      const nextRead = !(item.read === true)
+
+      applyChange(id, { read: nextRead })
+      mutate({ run: () => (nextRead ? markVideoAsRead(id) : markVideoAsUnread(id)) }).then(
+        (outcome) => {
+          if (outcome.ok) {
+            commitChange(id)
+          } else {
+            revertChange(id)
+            showError(`Couldn't update "${item.title ?? 'this video'}".`)
+          }
+        }
+      )
+    },
+    [getItem, applyChange, commitChange, revertChange, mutate, showError]
+  )
+
+  const onToggleArchive = useCallback(
+    (id: number) => {
+      const item = getItem(id)
+      if (!item) return
+      const nextArchived = !(item.archived === true)
+      const change: VideoMutationFields = nextArchived
+        ? { archived: true, read: true }
+        : { archived: false }
+
+      applyChange(id, change)
+      mutate({ run: () => (nextArchived ? archiveVideo(id) : unarchiveVideo(id)) }).then(
+        (outcome) => {
+          if (outcome.ok) {
+            commitChange(id)
+          } else {
+            revertChange(id)
+            showError(
+              `Couldn't ${nextArchived ? 'archive' : 'unarchive'} "${item.title ?? 'this video'}".`
+            )
+          }
+        }
+      )
+    },
+    [getItem, applyChange, commitChange, revertChange, mutate, showError]
+  )
+
+  const onSelectCategory = useCallback(
+    (id: number, nextCategory: string) => {
+      const item = getItem(id)
+      if (!item) return
+      const currentCategory = item.category?.trim() || 'None'
+      if (nextCategory === currentCategory) return
+
+      applyChange(id, { category: nextCategory })
+      mutate({ run: () => updateVideoCategory(id, nextCategory) }).then((outcome) => {
+        if (outcome.ok) {
+          commitChange(id)
+        } else {
+          revertChange(id)
+          showError(
+            `Couldn't move "${item.title ?? 'this video'}" to ${
+              nextCategory === 'None' ? 'Uncategorized' : nextCategory
+            }.`
+          )
+        }
+      })
+    },
+    [getItem, applyChange, commitChange, revertChange, mutate, showError]
+  )
 
   function handleSearchChange(value: string) {
     setSearchInput(value)
@@ -139,7 +375,7 @@ export default function VideosClient({
         </div>
       </div>
 
-      {videos.length === 0 ? (
+      {items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-qw-border px-6 py-20 text-center">
           <p className="text-sm text-qw-muted-1">
             {showArchived
@@ -151,13 +387,16 @@ export default function VideosClient({
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5">
-          {videos.map((video, index) => (
+          {items.map((video, index) => (
             <VideoCard
               key={video.id}
               video={video}
               categories={categories}
               listHref={listHref}
               priority={index < 3}
+              onToggleRead={onToggleRead}
+              onToggleArchive={onToggleArchive}
+              onSelectCategory={onSelectCategory}
             />
           ))}
         </div>

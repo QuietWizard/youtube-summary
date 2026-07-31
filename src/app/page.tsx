@@ -76,7 +76,7 @@ export default async function Home({
 
   const adminSupabase = createAdminClient()
   let query = adminSupabase
-    .from('YouTube-Summary')
+    .from('yts_info')
     .select(VIDEO_LIST_FIELDS, { count: 'exact' })
 
   query = showArchived
@@ -112,8 +112,18 @@ export default async function Home({
       ? selectedCategory
       : null
 
+  const viewKey = [
+    showArchived,
+    showAll,
+    selectedCategory ?? '',
+    currentPage,
+    pageSize,
+    searchTerm ?? '',
+  ].join('|')
+
   return (
     <VideosClient
+      key={viewKey}
       videos={(data ?? []) as VideoListItem[]}
       error={error?.message ?? null}
       categories={categories}

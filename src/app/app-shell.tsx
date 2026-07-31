@@ -6,6 +6,9 @@ import Image from 'next/image'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import SidebarContent from './sidebar-content'
+import PullToRefresh from './pull-to-refresh'
+import { VideoSyncProvider } from './video-sync-context'
+import { ToastProvider } from '@/components/ui/toast-provider'
 import type { CategoryNavItem } from './layout'
 import { NAV_COLLAPSED_COOKIE } from './nav-cookie'
 
@@ -62,6 +65,51 @@ export default function AppShell({
   }
 
   return (
+    <ToastProvider>
+      <VideoSyncProvider
+        initialCategories={categories}
+        initialAllCount={allCount}
+        initialUncategorizedCount={uncategorizedCount}
+      >
+        <AppShellContent
+          userEmail={userEmail}
+          activeCategory={activeCategory}
+          isArchivedActive={isArchivedActive}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+          isNavCollapsed={isNavCollapsed}
+          toggleNavCollapsed={toggleNavCollapsed}
+          handleSignOut={handleSignOut}
+        >
+          {children}
+        </AppShellContent>
+      </VideoSyncProvider>
+    </ToastProvider>
+  )
+}
+
+function AppShellContent({
+  userEmail,
+  activeCategory,
+  isArchivedActive,
+  isMobileMenuOpen,
+  setIsMobileMenuOpen,
+  isNavCollapsed,
+  toggleNavCollapsed,
+  handleSignOut,
+  children,
+}: {
+  userEmail: string | null
+  activeCategory: string | null
+  isArchivedActive: boolean
+  isMobileMenuOpen: boolean
+  setIsMobileMenuOpen: (open: boolean) => void
+  isNavCollapsed: boolean
+  toggleNavCollapsed: () => void
+  handleSignOut: () => void
+  children: ReactNode
+}) {
+  return (
     <div className="relative min-h-screen bg-qw-bg font-ui">
       {/* Mobile top bar */}
       <div className="sticky top-0 z-40 flex items-center gap-3 border-b border-qw-border bg-qw-bg/85 px-4 py-3 backdrop-blur-lg md:hidden">
@@ -110,9 +158,6 @@ export default function AppShell({
           />
           <aside className="absolute top-0 left-0 flex h-full w-[280px] max-w-[86vw] flex-col border-r border-qw-border bg-qw-sidebar animate-[qws-fade-in_250ms_var(--ease-qw)]">
             <SidebarContent
-              categories={categories}
-              allCount={allCount}
-              uncategorizedCount={uncategorizedCount}
               userEmail={userEmail}
               activeCategory={activeCategory}
               isArchivedActive={isArchivedActive}
@@ -129,9 +174,6 @@ export default function AppShell({
       {!isNavCollapsed && (
         <aside className="fixed top-0 left-0 z-20 hidden h-screen w-[264px] flex-col border-r border-qw-border bg-qw-sidebar md:flex">
           <SidebarContent
-            categories={categories}
-            allCount={allCount}
-            uncategorizedCount={uncategorizedCount}
             userEmail={userEmail}
             activeCategory={activeCategory}
             isArchivedActive={isArchivedActive}
@@ -167,7 +209,7 @@ export default function AppShell({
       )}
 
       <main className={`min-w-0 ${isNavCollapsed ? '' : 'md:ml-[264px]'}`}>
-        {children}
+        <PullToRefresh>{children}</PullToRefresh>
       </main>
     </div>
   )

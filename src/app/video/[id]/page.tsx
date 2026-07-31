@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { cookies } from 'next/headers'
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUser } from '@/utils/supabase/get-current-user'
 import { createAdminClient } from '@/utils/supabase/admin'
@@ -7,6 +8,12 @@ import type { Video } from '@/types/database'
 import Summary from './summary'
 import ActionBar from './action-bar'
 import { FontSizeProvider } from './font-size-context'
+import {
+  DEFAULT_FONT_SCALE,
+  FONT_SIZE_COOKIE,
+  MAX_FONT_SCALE,
+  MIN_FONT_SCALE,
+} from './font-size-cookie'
 
 type VideoDetail = Pick<
   Video,
@@ -33,6 +40,10 @@ export default async function VideoDetailPage({
   const { from } = await searchParams
   const backHref = isSafeRedirectTarget(from) ? from : '/'
   const user = await getCurrentUser()
+  const cookieStore = await cookies()
+  const initialFontScale = parseFontScale(
+    cookieStore.get(FONT_SIZE_COOKIE)?.value
+  )
 
   if (!user) {
     redirect('/login')
@@ -66,9 +77,10 @@ export default async function VideoDetailPage({
       </section>
 
       <article className="mx-auto max-w-[880px] px-6 pb-24">
-        <FontSizeProvider>
+        <FontSizeProvider initialScale={initialFontScale}>
           <ActionBar
             videoId={video.id}
+            title={video.title}
             backHref={backHref}
             initialCategory={normalizedCategory}
             categories={categories}
@@ -126,7 +138,7 @@ async function getVideoByUrlId(id: string) {
     'id, videoId, title, thumbnail, videoChannelId, videoChannelTitle, summary, videoPublished, category, read'
 
   const { data: videoByVideoId, error: videoIdError } = await supabase
-    .from('YouTube-Summary')
+    .from('yts_info')
     .select(fields)
     .eq('videoId', id)
     .maybeSingle<VideoDetail>()
@@ -146,7 +158,7 @@ async function getVideoByUrlId(id: string) {
   }
 
   const { data: videoByRowId, error: rowIdError } = await supabase
-    .from('YouTube-Summary')
+    .from('yts_info')
     .select(fields)
     .eq('id', rowId)
     .maybeSingle<VideoDetail>()
@@ -160,6 +172,16 @@ async function getVideoByUrlId(id: string) {
 
 function normalizeCategory(category: string | null) {
   return category?.trim() || 'None'
+}
+
+function parseFontScale(value: string | undefined) {
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_FONT_SCALE
+  }
+
+  return Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, parsed))
 }
 
 function isSafeRedirectTarget(target: string | undefined): target is string {
