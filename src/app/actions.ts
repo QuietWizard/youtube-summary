@@ -4,34 +4,35 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { createClient } from '@/utils/supabase/server'
 
+// These four are the hot path (tap, expect it to just happen). They're
+// already fully covered by client-side optimistic state — videos-client.tsx
+// and action-bar.tsx update the UI and roll it back on failure without ever
+// needing a re-fetch. `revalidatePath` from a Server Function currently
+// purges Next's *entire* client router cache, not just the given path (see
+// the "Server Functions" note under revalidatePath's docs), so calling it
+// here would force every previously visited route — including the root
+// layout's nav-count queries — to refetch from Supabase on its next visit.
+// That round trip is exactly the multi-second "nothing happening" delay this
+// app was built to get rid of, so these mutations intentionally rely on
+// Next's normal cache staleness window to pick up the change instead.
 export async function markVideoAsRead(id: number) {
   await updateVideo(id, { read: true })
-  revalidatePath('/')
-  revalidatePath('/video/[id]', 'page')
 }
 
 export async function markVideoAsUnread(id: number) {
   await updateVideo(id, { read: false })
-  revalidatePath('/')
-  revalidatePath('/video/[id]', 'page')
 }
 
 export async function archiveVideo(id: number) {
   await updateVideo(id, { archived: true, read: true })
-  revalidatePath('/')
-  revalidatePath('/video/[id]', 'page')
 }
 
 export async function unarchiveVideo(id: number) {
   await updateVideo(id, { archived: false })
-  revalidatePath('/')
-  revalidatePath('/video/[id]', 'page')
 }
 
 export async function updateVideoCategory(videoId: number, category: string) {
   await updateVideo(videoId, { category })
-  revalidatePath('/')
-  revalidatePath('/video/[id]', 'page')
 }
 
 export async function createCategoryAndAssignToVideo(
@@ -45,11 +46,9 @@ export async function createCategoryAndAssignToVideo(
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data } = await supabase.auth.getClaims()
 
-  if (!user) {
+  if (!data) {
     throw new Error('Unauthorized')
   }
 
@@ -85,11 +84,9 @@ async function updateVideo(
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data } = await supabase.auth.getClaims()
 
-  if (!user) {
+  if (!data) {
     throw new Error('Unauthorized')
   }
 
