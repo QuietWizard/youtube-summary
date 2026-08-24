@@ -27,6 +27,9 @@ type VideoSyncContextValue = {
   applyListChange: (id: number, change: VideoMutationFields) => void
   commitListChange: (id: number) => void
   revertListChange: (id: number) => void
+  setPendingChange: (id: number, change: VideoMutationFields) => void
+  clearPendingChange: (id: number) => void
+  getPendingChanges: () => Map<number, VideoMutationFields>
 }
 
 const VideoSyncContext = createContext<VideoSyncContextValue | null>(null)
@@ -60,6 +63,16 @@ export function VideoSyncProvider({
     initialUncategorizedCount
   )
   const listViewRef = useRef<RegisteredListView | null>(null)
+
+  // Pending edits made from outside the list (e.g. Archive from the article
+  // page) need somewhere to live that survives the list unmounting: this
+  // provider sits in the root layout, which persists across navigation,
+  // whereas the list page itself gets torn down and rebuilt from a
+  // (possibly stale, since most mutations no longer call revalidatePath —
+  // see actions.ts) server snapshot every time you navigate back to it. The
+  // list reads this map once on mount to hide/update anything that changed
+  // while it wasn't around.
+  const pendingChangesRef = useRef(new Map<number, VideoMutationFields>())
 
   const adjustCounts = useCallback((adjustment: NavCountsAdjustment) => {
     const allCountDelta = adjustment.allCountDelta
@@ -118,6 +131,20 @@ export function VideoSyncProvider({
     []
   )
 
+  const setPendingChange = useCallback((id: number, change: VideoMutationFields) => {
+    const existing = pendingChangesRef.current.get(id)
+    pendingChangesRef.current.set(id, existing ? { ...existing, ...change } : change)
+  }, [])
+
+  const clearPendingChange = useCallback((id: number) => {
+    pendingChangesRef.current.delete(id)
+  }, [])
+
+  const getPendingChanges = useCallback(
+    () => new Map(pendingChangesRef.current),
+    []
+  )
+
   const value: VideoSyncContextValue = {
     categories,
     allCount,
@@ -128,6 +155,9 @@ export function VideoSyncProvider({
     applyListChange,
     commitListChange,
     revertListChange,
+    setPendingChange,
+    clearPendingChange,
+    getPendingChanges,
   }
 
   return (
