@@ -34,7 +34,7 @@ export default function ActionBar({
 }: ActionBarProps) {
   const router = useRouter()
   const { scale, increase, decrease, reset } = useFontSize()
-  const { adjustCounts } = useVideoSync()
+  const { adjustCounts, setPendingChange, clearPendingChange } = useVideoSync()
   const { mutate } = useOptimisticMutation()
   const { showError } = useToast()
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false)
@@ -73,6 +73,7 @@ export default function ActionBar({
       { archived: false, category }
     )
     adjustCounts(adjustment)
+    setPendingChange(videoId, { category })
 
     mutate({ run: () => updateVideoCategory(videoId, category) }).then((outcome) => {
       if (outcome.ok) {
@@ -80,6 +81,7 @@ export default function ActionBar({
       }
       setSelectedCategory(previous)
       adjustCounts(negateAdjustment(adjustment))
+      clearPendingChange(videoId)
       showError(
         `Couldn't move "${title ?? 'this video'}" to ${
           category === 'None' ? 'Uncategorized' : category
@@ -113,6 +115,7 @@ export default function ActionBar({
       { archived: false, category: trimmed }
     )
     adjustCounts(adjustment)
+    setPendingChange(videoId, { category: trimmed })
 
     // No automatic retry here: this action inserts a new row into the
     // Categories table before updating the video, and a blind retry after a
@@ -128,15 +131,18 @@ export default function ActionBar({
       }
       setSelectedCategory(previous)
       adjustCounts(negateAdjustment(adjustment))
+      clearPendingChange(videoId)
       showError(`Couldn't create category "${trimmed}".`)
     })
   }
 
   function handleMarkRead() {
     setIsRead(true)
+    setPendingChange(videoId, { read: true })
     mutate({ run: () => markVideoAsRead(videoId) }).then((outcome) => {
       if (!outcome.ok) {
         setIsRead(false)
+        clearPendingChange(videoId)
         showError(`Couldn't mark "${title ?? 'this video'}" as read.`)
       }
     })
@@ -148,11 +154,16 @@ export default function ActionBar({
       { archived: true, category: selectedCategory }
     )
     adjustCounts(adjustment)
+    // Recorded before navigating away: the list page's initial render (right
+    // after router.push) reads this synchronously, which is what makes the
+    // item actually disappear instead of waiting for a manual refresh.
+    setPendingChange(videoId, { archived: true, read: true })
     router.push(backHref)
 
     mutate({ run: () => archiveVideo(videoId) }).then((outcome) => {
       if (!outcome.ok) {
         adjustCounts(negateAdjustment(adjustment))
+        clearPendingChange(videoId)
         showError(`Couldn't archive "${title ?? 'this video'}". It was left unarchived.`)
       }
     })
