@@ -16,7 +16,7 @@ import {
   negateAdjustment,
   sumAdjustments,
 } from '@/utils/video-view-filter'
-import type { NavCountsAdjustment } from '@/utils/video-view-filter'
+import type { NavCountsAdjustment, VideoView } from '@/utils/video-view-filter'
 import {
   archiveVideo,
   markVideoAsRead,
@@ -74,12 +74,25 @@ export default function VideosClient({
   searchTerm,
 }: VideosClientProps) {
   const router = useRouter()
-  const { adjustCounts, registerListView } = useVideoSync()
+  const { adjustCounts, registerListView, getPendingChanges, clearPendingChange } =
+    useVideoSync()
   const { mutate } = useOptimisticMutation()
   const { showError } = useToast()
   const [searchInput, setSearchInput] = useState(searchTerm ?? '')
-  const [items, setItems] = useState<VideoListItem[]>(videos)
-  const [totalCount, setTotalCount] = useState(totalCountProp)
+  const currentView: VideoView = { showArchived, showAll, selectedCategory }
+  // Edits made while this list wasn't mounted (e.g. Archive from the article
+  // page) are parked in VideoSyncContext, since that provider lives in the
+  // root layout and survives navigation while this component doesn't — see
+  // the comment on `pendingChangesRef` there. Fold them into the very first
+  // render so an item archived elsewhere doesn't reappear until a manual
+  // refresh.
+  const [initialMerge] = useState(() =>
+    mergeInitialItems(videos, getPendingChanges(), currentView)
+  )
+  const [items, setItems] = useState<VideoListItem[]>(initialMerge.items)
+  const [totalCount, setTotalCount] = useState(
+    totalCountProp - initialMerge.removedCount
+  )
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const itemsRef = useRef(items)
   const pendingRef = useRef(new Map<number, PendingEdit>())
@@ -97,6 +110,14 @@ export default function VideosClient({
   useEffect(() => {
     itemsRef.current = items
   }, [items])
+
+  useEffect(() => {
+    for (const id of initialMerge.consumedIds) {
+      clearPendingChange(id)
+    }
+    // Only ever consume the snapshot captured for the initial render above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -491,6 +512,36 @@ export default function VideosClient({
       </div>
     </div>
   )
+}
+
+function mergeInitialItems(
+  serverItems: VideoListItem[],
+  pending: Map<number, VideoMutationFields>,
+  view: VideoView
+): { items: VideoListItem[]; removedCount: number; consumedIds: number[] } {
+  const items: VideoListItem[] = []
+  const consumedIds: number[] = []
+  let removedCount = 0
+
+  for (const serverItem of serverItems) {
+    const change = pending.get(serverItem.id)
+
+    if (!change) {
+      items.push(serverItem)
+      continue
+    }
+
+    consumedIds.push(serverItem.id)
+    const nextItem = { ...serverItem, ...change }
+
+    if (isVisibleInView(nextItem, view)) {
+      items.push(nextItem)
+    } else {
+      removedCount += 1
+    }
+  }
+
+  return { items, removedCount, consumedIds }
 }
 
 function buildPageHref(
