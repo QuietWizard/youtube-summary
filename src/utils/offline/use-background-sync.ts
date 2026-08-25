@@ -48,13 +48,7 @@ export function useBackgroundSync() {
         if (cancelled) {
           return
         }
-
-        const { idsNeedingThumbnail } = await syncVideoList(videos)
-        if (cancelled || idsNeedingThumbnail.length === 0) {
-          return
-        }
-
-        await syncThumbnails(videos, idsNeedingThumbnail)
+        await flushMutationQueue()
       } catch {
         // Best-effort — the local cache just stays at its last-known state.
       }
@@ -95,10 +89,10 @@ async function pullIfStale(isCancelled: () => boolean) {
     return
   }
 
-  const { addedIds } = await syncVideoList(videos)
+  const { idsNeedingThumbnail } = await syncVideoList(videos)
   await setWatermark(watermark)
 
-  if (!isCancelled() && addedIds.length > 0) {
-    await syncThumbnails(videos, addedIds)
+  if (!isCancelled() && idsNeedingThumbnail.length > 0) {
+    await syncThumbnails(videos, idsNeedingThumbnail)
   }
 }
