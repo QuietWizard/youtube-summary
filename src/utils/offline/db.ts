@@ -22,6 +22,12 @@ export type OfflineVideo = {
   read: boolean | null
   videoPublished: string | null
   category: string | null
+  created_at: string | null
+  // Always false/undefined for a freshly-synced row (syncVideoList only ever
+  // pulls the unarchived set), but a locally-queued archive mutation writes
+  // `true` here immediately, before the next sync drops the row entirely —
+  // see updateLocalVideoField and the feed filtering in local-feed.ts.
+  archived?: boolean | null
   // ISO timestamps per field, set server-side by the yts_info_set_updated_at
   // trigger. Used to resolve conflicts when pushing a queued local mutation:
   // see sync-mutations.ts.

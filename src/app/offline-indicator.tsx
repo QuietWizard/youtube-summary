@@ -6,6 +6,7 @@ import { useBackgroundSync } from '@/utils/offline/use-background-sync'
 import { usePendingMutationCount } from '@/utils/offline/use-pending-mutation-count'
 import { subscribeToOpenReaderRequests } from '@/utils/offline/open-reader'
 import { requestOpenArticle } from '@/utils/offline/open-article'
+import { requestFeedNavigation } from '@/utils/offline/feed-navigation'
 import { useLocalVideos } from './local-videos-context'
 import OfflineReader from './offline-reader'
 
@@ -37,7 +38,7 @@ export default function OfflineIndicator() {
     getIsOfflineServerSnapshot
   )
   const pendingCount = usePendingMutationCount()
-  const { getLocalVideoByKey } = useLocalVideos()
+  const { getLocalVideoByKey, hasLocalData } = useLocalVideos()
   const [isReaderOpen, setIsReaderOpen] = useState(false)
 
   useEffect(() => {
@@ -68,19 +69,26 @@ export default function OfflineIndicator() {
   // needing a prop or context connection to this component.
   useEffect(() => subscribeToOpenReaderRequests(() => setIsReaderOpen(true)), [])
 
-  // Two things happen here for any same-origin link click, in order:
+  // Three things happen here for any same-origin link click, in order:
   //
   // 1. If it points at a specific video's article and that video is
   //    already synced locally, open it instantly instead of navigating —
   //    online or offline, since there's no reason to wait on (or risk) a
   //    server round trip for something already sitting in IndexedDB. See
   //    local-article-host.tsx.
-  // 2. Otherwise, while offline: anything else (pagination, a category,
-  //    search, an unsynced video) would attempt a client-side navigation
-  //    fetch that's guaranteed to fail. There's no way to catch that
-  //    failure after the fact and recover gracefully — router.push and
-  //    Link give back no promise to catch — so the fallback is to stop it
-  //    before it starts and show the simplified offline reader instead.
+  // 2. If it points at the feed itself ("/") for a non-archived view, and
+  //    the local cache has ever synced, switch views locally instead of
+  //    navigating — the whole unarchived catalog already lives in
+  //    IndexedDB, so category/search/pagination browsing needs nothing
+  //    from the server. See videos-client.tsx. Archived-view links are
+  //    deliberately excluded: archived videos are never cached locally.
+  // 3. Otherwise, while offline: anything else (an archived-view link, or
+  //    feed browsing before the first sync has ever completed, or an
+  //    unsynced video) would attempt a client-side navigation fetch that's
+  //    guaranteed to fail. There's no way to catch that failure after the
+  //    fact and recover gracefully — router.push and Link give back no
+  //    promise to catch — so the fallback is to stop it before it starts
+  //    and show the simplified offline reader instead.
   //
   // Runs in the capture phase to win the race against Next's own Link
   // click handler.
@@ -124,6 +132,12 @@ export default function OfflineIndicator() {
         }
       }
 
+      if (url.pathname === '/' && url.searchParams.get('archived') !== 'true' && hasLocalData) {
+        event.preventDefault()
+        requestFeedNavigation({ href })
+        return
+      }
+
       if (!navigator.onLine) {
         event.preventDefault()
         setIsReaderOpen(true)
@@ -132,7 +146,7 @@ export default function OfflineIndicator() {
 
     document.addEventListener('click', handleDocumentClick, true)
     return () => document.removeEventListener('click', handleDocumentClick, true)
-  }, [getLocalVideoByKey])
+  }, [getLocalVideoByKey, hasLocalData])
 
   return (
     <>

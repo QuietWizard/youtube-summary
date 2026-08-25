@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { VideoListItem } from './page'
 import VideoCard from './video-card'
@@ -16,6 +16,11 @@ import {
 } from '@/utils/video-view-filter'
 import type { NavCountsAdjustment, VideoView } from '@/utils/video-view-filter'
 import { applyLocalMutation } from '@/utils/offline/apply-local-mutation'
+import { useLocalVideos } from './local-videos-context'
+import { computeLocalFeed } from '@/utils/offline/local-feed'
+import { subscribeToFeedNavigationRequests } from '@/utils/offline/feed-navigation'
+import { parseFeedView, feedViewParamsFromSearchParams } from '@/utils/feed-view'
+import type { FeedView } from '@/utils/feed-view'
 
 const PAGE_SIZE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
 const SEARCH_DEBOUNCE_MS = 350
@@ -43,7 +48,6 @@ type VideosClientProps = {
   showAll: boolean
   showArchived: boolean
   currentPage: number
-  totalPages: number
   totalCount: number
   pageSize: number
   pageSizeOptions: number[]
@@ -59,7 +63,6 @@ export default function VideosClient({
   showAll,
   showArchived,
   currentPage,
-  totalPages,
   totalCount: totalCountProp,
   pageSize,
   pageSizeOptions,
@@ -69,8 +72,76 @@ export default function VideosClient({
   const { adjustCounts, registerListView, getPendingChanges, clearPendingChange } =
     useVideoSync()
   const { showError } = useToast()
+  const { allVideos, hasLocalData } = useLocalVideos()
+
+  // The view currently on screen — seeded from the server-rendered props at
+  // mount, then updated in place (no remount) whenever browsing moves
+  // locally instead of navigating. See navigateTo below and the click-guard
+  // in offline-indicator.tsx that routes eligible clicks here via
+  // subscribeToFeedNavigationRequests.
+  const [view, setView] = useState<FeedView>(() => ({
+    showArchived,
+    showAll,
+    selectedCategory,
+    categoryParam,
+    page: currentPage,
+    pageSize,
+    searchTerm,
+  }))
   const [searchInput, setSearchInput] = useState(searchTerm ?? '')
-  const currentView: VideoView = { showArchived, showAll, selectedCategory }
+  // Tracks the last view.searchTerm we've already reflected into the input,
+  // so the box can be reset whenever the view changes some other way (a
+  // sidebar category click, pagination, browser back/forward) without an
+  // effect — adjusting state during render, not after, avoids the extra
+  // render pass react-hooks/set-state-in-effect warns about. Never fires
+  // while the user is actively typing: that only ever updates view.searchTerm
+  // once the debounce below actually navigates.
+  const [reflectedSearchTerm, setReflectedSearchTerm] = useState(searchTerm)
+  if (view.searchTerm !== reflectedSearchTerm) {
+    setReflectedSearchTerm(view.searchTerm)
+    setSearchInput(view.searchTerm ?? '')
+  }
+
+  // The full (unpaginated) locally-filtered set for the current non-archived
+  // view — recomputed whenever the view changes or `allVideos` itself does
+  // (a mutation, or a fresh sync — see local-videos-context.tsx). Null (not
+  // just an empty array) until the local cache has ever loaded anything, so
+  // a cold start renders the server-provided `videos` prop first instead of
+  // flashing "no videos found" while IndexedDB is still being read — see
+  // sourceItems below. Archived videos are never cached locally (see
+  // db.ts), so that view stays on the server prop permanently.
+  const localFullList = useMemo(() => {
+    if (view.showArchived || !hasLocalData) {
+      return null
+    }
+    const localView: VideoView = {
+      showArchived: false,
+      showAll: view.showAll,
+      selectedCategory: view.selectedCategory,
+    }
+    return computeLocalFeed(allVideos, localView, view.searchTerm)
+  }, [view.showArchived, view.showAll, view.selectedCategory, view.searchTerm, allVideos, hasLocalData])
+
+  // The page of items actually on screen for the current view: the server
+  // snapshot for the archived view (unchanged from before Stage 3b), or a
+  // slice of the local cache for everything else — falling back to the
+  // server snapshot until the very first local computation resolves.
+  const sourceItems = useMemo(() => {
+    if (view.showArchived || localFullList === null) {
+      return videos
+    }
+    const from = (view.page - 1) * view.pageSize
+    return localFullList.slice(from, from + view.pageSize)
+  }, [view.showArchived, view.page, view.pageSize, localFullList, videos])
+
+  const sourceTotalCount =
+    view.showArchived || localFullList === null ? totalCountProp : localFullList.length
+
+  const currentView: VideoView = {
+    showArchived: view.showArchived,
+    showAll: view.showAll,
+    selectedCategory: view.selectedCategory,
+  }
   // Edits made while this list wasn't mounted (e.g. Archive from the article
   // page) are parked in VideoSyncContext, since that provider lives in the
   // root layout and survives navigation while this component doesn't — see
@@ -78,24 +149,33 @@ export default function VideosClient({
   // render so an item archived elsewhere doesn't reappear until a manual
   // refresh.
   const [initialMerge] = useState(() =>
-    mergeInitialItems(videos, getPendingChanges(), currentView)
+    mergeInitialItems(sourceItems, getPendingChanges(), currentView)
   )
   const [items, setItems] = useState<VideoListItem[]>(initialMerge.items)
   const [totalCount, setTotalCount] = useState(
-    totalCountProp - initialMerge.removedCount
+    sourceTotalCount - initialMerge.removedCount
   )
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const itemsRef = useRef(items)
   const pendingRef = useRef(new Map<number, PendingEdit>())
-  const prevVideosRef = useRef(videos)
-  const hasPreviousPage = currentPage > 1
-  const hasNextPage = currentPage < totalPages
+  const prevSourceItemsRef = useRef(sourceItems)
+  // Lets the feed-navigation and popstate handlers below always read the
+  // current pageSize without needing to re-subscribe on every view change —
+  // they only ever set up their listener once (see the eslint-disable
+  // comments on those effects).
+  const viewRef = useRef(view)
+  useEffect(() => {
+    viewRef.current = view
+  }, [view])
+  const totalPages = Math.max(1, Math.ceil(totalCount / view.pageSize))
+  const hasPreviousPage = view.page > 1
+  const hasNextPage = view.page < totalPages
   const listHref = buildPageHref(
-    categoryParam,
-    showArchived,
-    currentPage,
-    pageSize,
-    searchTerm
+    view.categoryParam,
+    view.showArchived,
+    view.page,
+    view.pageSize,
+    view.searchTerm
   )
 
   useEffect(() => {
@@ -118,25 +198,26 @@ export default function VideosClient({
     }
   }, [])
 
-  // A background revalidation (e.g. pull-to-refresh) can land while this
-  // exact view is still mounted. Merge the fresh snapshot in, but keep any
-  // locally in-flight optimistic intent: a pending removal hasn't
-  // necessarily been picked up by the server yet, and a pending update's
-  // fields should keep winning over a possibly-stale fresh row.
+  // A background revalidation (a local resync, or — for the archived view —
+  // a pull-to-refresh) can land while this exact view is still mounted.
+  // Merge the fresh snapshot in, but keep any locally in-flight optimistic
+  // intent: a pending removal hasn't necessarily been picked up yet, and a
+  // pending update's fields should keep winning over a possibly-stale fresh
+  // row.
   useEffect(() => {
-    if (prevVideosRef.current === videos) {
+    if (prevSourceItemsRef.current === sourceItems) {
       return
     }
-    prevVideosRef.current = videos
+    prevSourceItemsRef.current = sourceItems
 
     setItems(() => {
       const merged: VideoListItem[] = []
-      for (const serverItem of videos) {
-        const pending = pendingRef.current.get(serverItem.id)
+      for (const freshItem of sourceItems) {
+        const pending = pendingRef.current.get(freshItem.id)
         if (pending?.type === 'remove') {
           continue
         }
-        merged.push(pending?.type === 'update' ? { ...serverItem, ...pending.change } : serverItem)
+        merged.push(pending?.type === 'update' ? { ...freshItem, ...pending.change } : freshItem)
       }
       return merged
     })
@@ -144,8 +225,44 @@ export default function VideosClient({
     const pendingRemovedCount = Array.from(pendingRef.current.values()).filter(
       (edit) => edit.type === 'remove'
     ).length
-    setTotalCount(totalCountProp - pendingRemovedCount)
-  }, [videos, totalCountProp])
+    setTotalCount(sourceTotalCount - pendingRemovedCount)
+  }, [sourceItems, sourceTotalCount])
+
+  // Moves the feed to a new view without a server round trip: pushes the
+  // real URL (so the address bar and back button behave correctly) and
+  // updates local state directly. Used for every in-app way of changing the
+  // feed's view — pagination, search, page size, and (via the click-guard
+  // in offline-indicator.tsx forwarding here) sidebar category links —
+  // whenever the local cache can serve the result. Never used for the
+  // archived view, which always stays a real navigation.
+  const navigateTo = useCallback((nextView: FeedView, href: string) => {
+    window.history.pushState({}, '', href)
+    setView(nextView)
+  }, [])
+
+  useEffect(() => {
+    return subscribeToFeedNavigationRequests(({ href }) => {
+      const url = new URL(href, window.location.origin)
+      const nextView = parseFeedView(feedViewParamsFromSearchParams(url), viewRef.current.pageSize)
+      navigateTo(nextView, href)
+    })
+  }, [navigateTo])
+
+  // Covers the browser's own back/forward buttons moving between feed views
+  // that were reached locally (no navigation, no remount) — re-derive the
+  // view from wherever the address bar landed.
+  useEffect(() => {
+    function handlePopState() {
+      if (window.location.pathname !== '/') {
+        return
+      }
+      const url = new URL(window.location.href)
+      setView(parseFeedView(feedViewParamsFromSearchParams(url), viewRef.current.pageSize))
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   const applyChange = useCallback(
     (id: number, change: VideoMutationFields) => {
@@ -161,11 +278,7 @@ export default function VideosClient({
       const accumulatedAdjustment = existingPending
         ? sumAdjustments(existingPending.adjustment, stepAdjustment)
         : stepAdjustment
-      const visible = isVisibleInView(nextItem, {
-        showArchived,
-        showAll,
-        selectedCategory,
-      })
+      const visible = isVisibleInView(nextItem, currentView)
 
       if (visible) {
         setItems((current) =>
@@ -197,7 +310,8 @@ export default function VideosClient({
         adjustCounts(stepAdjustment)
       }
     },
-    [showArchived, showAll, selectedCategory, adjustCounts]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentView.showArchived, currentView.showAll, currentView.selectedCategory, adjustCounts]
   )
 
   const commitChange = useCallback((id: number) => {
@@ -259,6 +373,11 @@ export default function VideosClient({
     [getItem, applyChange, commitChange]
   )
 
+  // Local browsing works offline (it's all IndexedDB), so unlike other
+  // offline-blocked interactions, search only needs to fall back to a real
+  // (network-dependent) navigation when the local cache hasn't synced yet.
+  const canBrowseLocally = !view.showArchived && hasLocalData
+
   function handleSearchChange(value: string) {
     setSearchInput(value)
 
@@ -267,36 +386,49 @@ export default function VideosClient({
     }
 
     searchDebounceRef.current = setTimeout(() => {
-      // Search is a live DB query - there's nothing useful it can do
-      // offline anyway, and attempting it risks the same navigation
-      // failure as everything else below. Leave the typed text in place
-      // and just skip the navigation.
+      const nextSearchTerm = value.trim() || null
+      const href = buildPageHref(view.categoryParam, view.showArchived, 1, view.pageSize, nextSearchTerm)
+
+      if (canBrowseLocally) {
+        navigateTo({ ...view, page: 1, searchTerm: nextSearchTerm }, href)
+        return
+      }
+
       if (!navigator.onLine) {
         return
       }
 
-      router.push(
-        buildPageHref(
-          categoryParam,
-          showArchived,
-          1,
-          pageSize,
-          value.trim() || null
-        )
-      )
+      router.push(href)
     }, SEARCH_DEBOUNCE_MS)
   }
 
+  function handlePageSizeChange(nextPageSize: number) {
+    document.cookie = `${PAGE_SIZE_COOKIE}=${nextPageSize}; path=/; max-age=${PAGE_SIZE_COOKIE_MAX_AGE}; SameSite=Lax`
+    const href = buildPageHref(view.categoryParam, view.showArchived, 1, nextPageSize, view.searchTerm)
+
+    if (canBrowseLocally) {
+      navigateTo({ ...view, page: 1, pageSize: nextPageSize }, href)
+      return
+    }
+
+    if (!navigator.onLine) {
+      showError("You're offline — this will apply next time you're online.")
+      return
+    }
+
+    router.push(href)
+  }
+
   const isUncategorizedView =
-    !showArchived && !showAll && (!selectedCategory || selectedCategory === 'None')
-  const sectionEyebrow = showArchived ? 'Archive' : 'Codex Feed'
-  const sectionTitle = showArchived
+    !view.showArchived && !view.showAll && (!view.selectedCategory || view.selectedCategory === 'None')
+  const sectionEyebrow = view.showArchived ? 'Archive' : 'Codex Feed'
+  const sectionTitle = view.showArchived
     ? 'Archived'
-    : showAll
+    : view.showAll
       ? 'All Videos'
       : isUncategorizedView
         ? 'Uncategorized'
-        : selectedCategory
+        : view.selectedCategory
 
   return (
     <div className="mx-auto max-w-[1400px] px-6 pt-8 pb-20">
@@ -347,9 +479,9 @@ export default function VideosClient({
       {items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-qw-border px-6 py-20 text-center">
           <p className="text-sm text-qw-muted-1">
-            {showArchived
+            {view.showArchived
               ? 'No archived videos found.'
-              : searchTerm
+              : view.searchTerm
                 ? 'No videos match your search.'
                 : 'No videos found in this category.'}
           </p>
@@ -374,26 +506,8 @@ export default function VideosClient({
       <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
         <label className="flex items-center gap-2 text-sm text-qw-muted-1">
           <select
-            value={pageSize}
-            onChange={(event) => {
-              const nextPageSize = Number(event.target.value)
-              document.cookie = `${PAGE_SIZE_COOKIE}=${nextPageSize}; path=/; max-age=${PAGE_SIZE_COOKIE_MAX_AGE}; SameSite=Lax`
-
-              if (!navigator.onLine) {
-                showError("You're offline — this will apply next time you're online.")
-                return
-              }
-
-              router.push(
-                buildPageHref(
-                  categoryParam,
-                  showArchived,
-                  1,
-                  nextPageSize,
-                  searchTerm
-                )
-              )
-            }}
+            value={view.pageSize}
+            onChange={(event) => handlePageSizeChange(Number(event.target.value))}
             className="h-9 rounded-md border border-qw-border bg-qw-surface-1 px-2 text-sm font-medium text-qw-fg-2"
           >
             {pageSizeOptions.map((option) => (
@@ -409,8 +523,8 @@ export default function VideosClient({
             <Link
               href={
                 hasPreviousPage
-                  ? buildPageHref(categoryParam, showArchived, currentPage - 1, pageSize, searchTerm)
-                  : buildPageHref(categoryParam, showArchived, currentPage, pageSize, searchTerm)
+                  ? buildPageHref(view.categoryParam, view.showArchived, view.page - 1, view.pageSize, view.searchTerm)
+                  : buildPageHref(view.categoryParam, view.showArchived, view.page, view.pageSize, view.searchTerm)
               }
               prefetch={hasPreviousPage}
               aria-disabled={!hasPreviousPage}
@@ -423,7 +537,7 @@ export default function VideosClient({
               Previous
             </Link>
 
-            {getPageNumbers(currentPage, totalPages).map((item, index) =>
+            {getPageNumbers(view.page, totalPages).map((item, index) =>
               item === 'ellipsis' ? (
                 <span key={`ellipsis-${index}`} className="px-2 text-sm text-qw-muted-2">
                   …
@@ -431,11 +545,11 @@ export default function VideosClient({
               ) : (
                 <Link
                   key={item}
-                  href={buildPageHref(categoryParam, showArchived, item, pageSize, searchTerm)}
-                  prefetch={Math.abs(item - currentPage) <= 1}
-                  aria-current={item === currentPage ? 'page' : undefined}
+                  href={buildPageHref(view.categoryParam, view.showArchived, item, view.pageSize, view.searchTerm)}
+                  prefetch={Math.abs(item - view.page) <= 1}
+                  aria-current={item === view.page ? 'page' : undefined}
                   className={`inline-flex h-9 w-9 items-center justify-center rounded-md border text-sm font-medium transition-colors ${
-                    item === currentPage
+                    item === view.page
                       ? 'border-qw-accent bg-qw-accent text-qw-bg'
                       : 'border-qw-border bg-qw-surface-1 text-qw-fg-2 hover:border-qw-border-strong hover:bg-qw-surface-2'
                   }`}
@@ -448,8 +562,8 @@ export default function VideosClient({
             <Link
               href={
                 hasNextPage
-                  ? buildPageHref(categoryParam, showArchived, currentPage + 1, pageSize, searchTerm)
-                  : buildPageHref(categoryParam, showArchived, currentPage, pageSize, searchTerm)
+                  ? buildPageHref(view.categoryParam, view.showArchived, view.page + 1, view.pageSize, view.searchTerm)
+                  : buildPageHref(view.categoryParam, view.showArchived, view.page, view.pageSize, view.searchTerm)
               }
               prefetch={hasNextPage}
               aria-disabled={!hasNextPage}

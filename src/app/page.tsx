@@ -5,13 +5,8 @@ import { createAdminClient } from '@/utils/supabase/admin'
 import { getCurrentUser } from '@/utils/supabase/get-current-user'
 import { getCategories } from '@/utils/get-categories'
 import type { Video } from '@/types/database'
-import {
-  PAGE_SIZE_COOKIE,
-  PAGE_SIZE_OPTIONS,
-  DEFAULT_PAGE_SIZE,
-} from './page-size-cookie'
-
-const UNCATEGORIZED = 'None'
+import { PAGE_SIZE_COOKIE, PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE } from './page-size-cookie'
+import { parseFeedView, UNCATEGORIZED } from '@/utils/feed-view'
 
 // Only the columns the video grid/list actually render — `summary` in
 // particular can be several KB per row and is only needed on the detail page.
@@ -42,29 +37,22 @@ export default async function Home({
     search?: string
   }>
 }) {
-  const {
-    category,
-    page,
-    archived,
-    pageSize: pageSizeParam,
-    search,
-  } = await searchParams
-  const rawCategory = category?.trim() || null
-  const showArchived = archived === 'true'
-  const showAll = !showArchived && rawCategory?.toLowerCase() === 'all'
-  const selectedCategory =
-    !showArchived && !showAll && !rawCategory ? UNCATEGORIZED : rawCategory
-  const searchTerm = search?.trim() || null
-
+  const params = await searchParams
   const cookieStore = await cookies()
   const cookiePageSize = Number(cookieStore.get(PAGE_SIZE_COOKIE)?.value)
   const fallbackPageSize = PAGE_SIZE_OPTIONS.includes(cookiePageSize)
     ? cookiePageSize
     : DEFAULT_PAGE_SIZE
-  const pageSize = PAGE_SIZE_OPTIONS.includes(Number(pageSizeParam))
-    ? Number(pageSizeParam)
-    : fallbackPageSize
-  const currentPage = Math.max(1, Number(page) || 1)
+
+  const {
+    showArchived,
+    showAll,
+    selectedCategory,
+    categoryParam,
+    page: currentPage,
+    pageSize,
+    searchTerm,
+  } = parseFeedView(params, fallbackPageSize)
   const from = (currentPage - 1) * pageSize
   const to = from + pageSize - 1
 
@@ -105,12 +93,6 @@ export default async function Home({
   ])
 
   const totalCount = count ?? 0
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-  const categoryParam = showAll
-    ? 'all'
-    : selectedCategory && selectedCategory !== UNCATEGORIZED
-      ? selectedCategory
-      : null
 
   const viewKey = [
     showArchived,
@@ -132,7 +114,6 @@ export default async function Home({
       showAll={showAll}
       showArchived={showArchived}
       currentPage={currentPage}
-      totalPages={totalPages}
       totalCount={totalCount}
       pageSize={pageSize}
       pageSizeOptions={PAGE_SIZE_OPTIONS}
