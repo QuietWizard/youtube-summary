@@ -7,6 +7,7 @@ import { getCategories } from '@/utils/get-categories'
 import type { Video } from '@/types/database'
 import Summary from './summary'
 import ActionBar from './action-bar'
+import VideoHero from './video-hero'
 import { FontSizeProvider } from './font-size-context'
 import {
   DEFAULT_FONT_SCALE,
@@ -65,16 +66,7 @@ export default async function VideoDetailPage({
 
   return (
     <div className="animate-[qws-fade-up_320ms_var(--ease-qw)]">
-      <section
-        className="relative flex min-h-[280px] items-end bg-qw-surface-2 bg-cover bg-center"
-        style={
-          video.thumbnail
-            ? { backgroundImage: `url(${video.thumbnail})` }
-            : undefined
-        }
-      >
-        <div className="absolute inset-0 bg-[linear-gradient(to_top,#07090F_0%,rgba(7,9,15,0.6)_55%,rgba(7,9,15,0.15)_100%)]" />
-      </section>
+      <VideoHero id={video.id} thumbnail={video.thumbnail} />
 
       <article className="mx-auto max-w-[880px] px-6 pb-24">
         <FontSizeProvider initialScale={initialFontScale}>
