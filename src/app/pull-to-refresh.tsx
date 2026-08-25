@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from 'react'
 import type { ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/components/ui/toast-provider'
 
 const PULL_THRESHOLD = 64
 const MAX_PULL = 96
@@ -10,6 +11,7 @@ const RESISTANCE = 0.45
 
 export default function PullToRefresh({ children }: { children: ReactNode }) {
   const router = useRouter()
+  const { showError } = useToast()
   const [isPending, startTransition] = useTransition()
   const [pullDistance, setPullDistance] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -46,6 +48,18 @@ export default function PullToRefresh({ children }: { children: ReactNode }) {
 
     if (pullDistance >= PULL_THRESHOLD) {
       setPullDistance(0)
+
+      // router.refresh() re-fetches the current route from the server, which
+      // is guaranteed to fail with no connection — and on at least one
+      // combination (Android + Brave) that failure cascades into a hard
+      // reload that browser's service worker doesn't intercept either,
+      // producing its native offline error instead of just failing quietly.
+      // Skip the attempt entirely rather than race that.
+      if (!navigator.onLine) {
+        showError("You're offline — pull to refresh once you're back online.")
+        return
+      }
+
       startTransition(() => {
         router.refresh()
       })
