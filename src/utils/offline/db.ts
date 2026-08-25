@@ -162,6 +162,25 @@ export async function getOfflineVideoById(id: number): Promise<OfflineVideo | un
   return db.get(STORE_VIDEOS, id)
 }
 
+// Writes a field-level edit straight into the local copy of a video — the
+// "apply instantly" half of the local-first mutation path in
+// apply-local-mutation.ts. A no-op if the video isn't in the local store
+// for some reason (shouldn't normally happen: mutations are only offered
+// on videos already loaded from it).
+export async function updateLocalVideoField(
+  videoId: number,
+  field: MutationField,
+  value: boolean | string
+) {
+  const db = await getDb()
+  if (!db) return
+
+  const video = await db.get(STORE_VIDEOS, videoId)
+  if (!video) return
+
+  await db.put(STORE_VIDEOS, { ...video, [field]: value } as OfflineVideo)
+}
+
 // Mirrors the lookup order used server-side in video/[id]/page.tsx: the
 // route param is usually the YouTube video id, occasionally the row id.
 export async function getOfflineVideoByKey(
@@ -200,6 +219,22 @@ export async function setWatermark(watermark: string | null) {
 
 // --- Pending mutation queue -------------------------------------------
 
+// Fired whenever the queue's contents change (something queued or
+// removed), so a pending-count indicator can re-read it reactively without
+// polling — see use-pending-mutation-count.ts.
+const MUTATIONS_CHANGED_EVENT = 'offline:mutations-changed'
+
+function notifyMutationsChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(MUTATIONS_CHANGED_EVENT))
+  }
+}
+
+export function subscribeToMutationsChanged(callback: () => void) {
+  window.addEventListener(MUTATIONS_CHANGED_EVENT, callback)
+  return () => window.removeEventListener(MUTATIONS_CHANGED_EVENT, callback)
+}
+
 export async function enqueueMutation(
   videoId: number,
   field: MutationField,
@@ -215,6 +250,7 @@ export async function enqueueMutation(
     value,
     createdAt: Date.now(),
   })
+  notifyMutationsChanged()
 }
 
 export async function getPendingMutations(): Promise<PendingMutation[]> {
@@ -233,4 +269,5 @@ export async function removeMutation(key: string) {
   const db = await getDb()
   if (!db) return
   await db.delete(STORE_MUTATIONS, key)
+  notifyMutationsChanged()
 }

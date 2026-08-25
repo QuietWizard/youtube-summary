@@ -14,7 +14,6 @@ export type RegisteredListView = {
   getItem: (id: number) => VideoListItem | undefined
   applyChange: (id: number, change: VideoMutationFields) => void
   commitChange: (id: number) => void
-  revertChange: (id: number) => void
 }
 
 type VideoSyncContextValue = {
@@ -26,7 +25,6 @@ type VideoSyncContextValue = {
   getListItem: (id: number) => VideoListItem | undefined
   applyListChange: (id: number, change: VideoMutationFields) => void
   commitListChange: (id: number) => void
-  revertListChange: (id: number) => void
   setPendingChange: (id: number, change: VideoMutationFields) => void
   clearPendingChange: (id: number) => void
   getPendingChanges: () => Map<number, VideoMutationFields>
@@ -50,13 +48,13 @@ export function VideoSyncProvider({
   // Seeded once from the server on mount, then only ever changed by
   // adjustCounts below. We deliberately never re-sync these to fresh
   // `initial*` props on every render: every mutation this app makes already
-  // applies a delta that matches where the DB will end up (revert on
-  // failure, commit on success — see videos-client.tsx / action-bar.tsx), so
-  // the running local total tracks DB truth on its own. The only case where
-  // it could drift is another tab/device changing data during this session,
-  // which is the staleness tradeoff already accepted for offline-eventually
-  // support (see the performance/optimistic-UI plan) rather than something
-  // to paper over with a prop-watching effect.
+  // applies a delta that matches where local storage (and eventually the
+  // server, via the background sync queue — see apply-local-mutation.ts)
+  // will end up, so the running local total tracks truth on its own without
+  // waiting for a round trip. The only case where it could drift is another
+  // device changing data during this session, which self-corrects on the
+  // next watermark-gated pull rather than something to paper over with a
+  // prop-watching effect.
   const [categories, setCategories] = useState(initialCategories)
   const [allCount, setAllCount] = useState(initialAllCount)
   const [uncategorizedCount, setUncategorizedCount] = useState(
@@ -126,10 +124,6 @@ export function VideoSyncProvider({
     (id: number) => listViewRef.current?.commitChange(id),
     []
   )
-  const revertListChange = useCallback(
-    (id: number) => listViewRef.current?.revertChange(id),
-    []
-  )
 
   const setPendingChange = useCallback((id: number, change: VideoMutationFields) => {
     const existing = pendingChangesRef.current.get(id)
@@ -154,7 +148,6 @@ export function VideoSyncProvider({
     getListItem,
     applyListChange,
     commitListChange,
-    revertListChange,
     setPendingChange,
     clearPendingChange,
     getPendingChanges,

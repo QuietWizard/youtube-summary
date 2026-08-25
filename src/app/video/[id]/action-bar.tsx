@@ -3,21 +3,17 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import {
-  archiveVideo,
-  createCategoryAndAssignToVideo,
-  markVideoAsRead,
-  updateVideoCategory,
-} from '@/app/actions'
+import { createCategoryAndAssignToVideo } from '@/app/actions'
 import { useFontSize } from './font-size-context'
 import { useVideoSync } from '@/app/video-sync-context'
 import { useOptimisticMutation } from '@/utils/use-optimistic-mutation'
 import { useToast } from '@/components/ui/toast-provider'
 import { computeNavCountsAdjustment, negateAdjustment } from '@/utils/video-view-filter'
+import { applyLocalMutation } from '@/utils/offline/apply-local-mutation'
+import { requestOpenReader } from '@/utils/offline/open-reader'
 
 type ActionBarProps = {
   videoId: number
-  title: string | null
   backHref: string
   initialCategory: string
   categories: string[]
@@ -26,7 +22,6 @@ type ActionBarProps = {
 
 export default function ActionBar({
   videoId,
-  title,
   backHref,
   initialCategory,
   categories,
@@ -74,20 +69,7 @@ export default function ActionBar({
     )
     adjustCounts(adjustment)
     setPendingChange(videoId, { category })
-
-    mutate({ run: () => updateVideoCategory(videoId, category) }).then((outcome) => {
-      if (outcome.ok) {
-        return
-      }
-      setSelectedCategory(previous)
-      adjustCounts(negateAdjustment(adjustment))
-      clearPendingChange(videoId)
-      showError(
-        `Couldn't move "${title ?? 'this video'}" to ${
-          category === 'None' ? 'Uncategorized' : category
-        }.`
-      )
-    })
+    applyLocalMutation(videoId, 'category', category)
   }
 
   function handleCreateCategory() {
@@ -139,26 +121,10 @@ export default function ActionBar({
   function handleMarkRead() {
     setIsRead(true)
     setPendingChange(videoId, { read: true })
-    mutate({ run: () => markVideoAsRead(videoId) }).then((outcome) => {
-      if (!outcome.ok) {
-        setIsRead(false)
-        clearPendingChange(videoId)
-        showError(`Couldn't mark "${title ?? 'this video'}" as read.`)
-      }
-    })
+    applyLocalMutation(videoId, 'read', true)
   }
 
   function handleArchive() {
-    // archiveVideo() needs a connection to persist regardless, and the
-    // router.push below has no way to recover if its own fetch fails while
-    // offline — on at least one browser/OS combination that failure
-    // crashes to a native error screen instead of failing gracefully. Skip
-    // the whole thing rather than attempt either.
-    if (!navigator.onLine) {
-      showError("You're offline — archiving needs a connection.")
-      return
-    }
-
     const adjustment = computeNavCountsAdjustment(
       { archived: false, category: selectedCategory },
       { archived: true, category: selectedCategory }
@@ -168,15 +134,20 @@ export default function ActionBar({
     // after router.push) reads this synchronously, which is what makes the
     // item actually disappear instead of waiting for a manual refresh.
     setPendingChange(videoId, { archived: true, read: true })
-    router.push(backHref)
+    applyLocalMutation(videoId, 'archived', true)
+    applyLocalMutation(videoId, 'read', true)
 
-    mutate({ run: () => archiveVideo(videoId) }).then((outcome) => {
-      if (!outcome.ok) {
-        adjustCounts(negateAdjustment(adjustment))
-        clearPendingChange(videoId)
-        showError(`Couldn't archive "${title ?? 'this video'}". It was left unarchived.`)
-      }
-    })
+    // Archiving itself now works fine offline (applied locally, queued for
+    // later — see apply-local-mutation.ts). The one thing that still isn't
+    // safe offline is this navigation: router.push's own fetch can fail
+    // badly with no network at all on some browsers (see the Brave/Android
+    // gap noted in offline-indicator.tsx). Open the local reader in place
+    // instead of attempting it.
+    if (navigator.onLine) {
+      router.push(backHref)
+    } else {
+      requestOpenReader()
+    }
   }
 
   const categoryOptions = ['None', ...categories.filter((c) => c !== 'None')]
