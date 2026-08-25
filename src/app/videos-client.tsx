@@ -8,22 +8,14 @@ import VideoCard from './video-card'
 import { PAGE_SIZE_COOKIE, DEFAULT_PAGE_SIZE } from './page-size-cookie'
 import { useVideoSync } from './video-sync-context'
 import type { VideoMutationFields } from './video-sync-context'
-import { useOptimisticMutation } from '@/utils/use-optimistic-mutation'
 import { useToast } from '@/components/ui/toast-provider'
 import {
   isVisibleInView,
   computeNavCountsAdjustment,
-  negateAdjustment,
   sumAdjustments,
 } from '@/utils/video-view-filter'
 import type { NavCountsAdjustment, VideoView } from '@/utils/video-view-filter'
-import {
-  archiveVideo,
-  markVideoAsRead,
-  markVideoAsUnread,
-  unarchiveVideo,
-  updateVideoCategory,
-} from './actions'
+import { applyLocalMutation } from '@/utils/offline/apply-local-mutation'
 
 const PAGE_SIZE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
 const SEARCH_DEBOUNCE_MS = 350
@@ -76,7 +68,6 @@ export default function VideosClient({
   const router = useRouter()
   const { adjustCounts, registerListView, getPendingChanges, clearPendingChange } =
     useVideoSync()
-  const { mutate } = useOptimisticMutation()
   const { showError } = useToast()
   const [searchInput, setSearchInput] = useState(searchTerm ?? '')
   const currentView: VideoView = { showArchived, showAll, selectedCategory }
@@ -213,40 +204,14 @@ export default function VideosClient({
     pendingRef.current.delete(id)
   }, [])
 
-  const revertChange = useCallback(
-    (id: number) => {
-      const pending = pendingRef.current.get(id)
-      if (!pending) {
-        return
-      }
-      pendingRef.current.delete(id)
-
-      if (pending.type === 'remove') {
-        setItems((current) => {
-          const next = [...current]
-          next.splice(Math.min(pending.index, next.length), 0, pending.original)
-          return next
-        })
-        setTotalCount((count) => count + 1)
-      } else {
-        setItems((current) =>
-          current.map((video) => (video.id === id ? pending.original : video))
-        )
-      }
-
-      adjustCounts(negateAdjustment(pending.adjustment))
-    },
-    [adjustCounts]
-  )
-
   const getItem = useCallback(
     (id: number) => itemsRef.current.find((video) => video.id === id),
     []
   )
 
   useEffect(() => {
-    return registerListView({ getItem, applyChange, commitChange, revertChange })
-  }, [registerListView, getItem, applyChange, commitChange, revertChange])
+    return registerListView({ getItem, applyChange, commitChange })
+  }, [registerListView, getItem, applyChange, commitChange])
 
   const onToggleRead = useCallback(
     (id: number) => {
@@ -255,18 +220,10 @@ export default function VideosClient({
       const nextRead = !(item.read === true)
 
       applyChange(id, { read: nextRead })
-      mutate({ run: () => (nextRead ? markVideoAsRead(id) : markVideoAsUnread(id)) }).then(
-        (outcome) => {
-          if (outcome.ok) {
-            commitChange(id)
-          } else {
-            revertChange(id)
-            showError(`Couldn't update "${item.title ?? 'this video'}".`)
-          }
-        }
-      )
+      commitChange(id)
+      applyLocalMutation(id, 'read', nextRead)
     },
-    [getItem, applyChange, commitChange, revertChange, mutate, showError]
+    [getItem, applyChange, commitChange]
   )
 
   const onToggleArchive = useCallback(
@@ -279,20 +236,13 @@ export default function VideosClient({
         : { archived: false }
 
       applyChange(id, change)
-      mutate({ run: () => (nextArchived ? archiveVideo(id) : unarchiveVideo(id)) }).then(
-        (outcome) => {
-          if (outcome.ok) {
-            commitChange(id)
-          } else {
-            revertChange(id)
-            showError(
-              `Couldn't ${nextArchived ? 'archive' : 'unarchive'} "${item.title ?? 'this video'}".`
-            )
-          }
-        }
-      )
+      commitChange(id)
+      applyLocalMutation(id, 'archived', nextArchived)
+      if (nextArchived) {
+        applyLocalMutation(id, 'read', true)
+      }
     },
-    [getItem, applyChange, commitChange, revertChange, mutate, showError]
+    [getItem, applyChange, commitChange]
   )
 
   const onSelectCategory = useCallback(
@@ -303,20 +253,10 @@ export default function VideosClient({
       if (nextCategory === currentCategory) return
 
       applyChange(id, { category: nextCategory })
-      mutate({ run: () => updateVideoCategory(id, nextCategory) }).then((outcome) => {
-        if (outcome.ok) {
-          commitChange(id)
-        } else {
-          revertChange(id)
-          showError(
-            `Couldn't move "${item.title ?? 'this video'}" to ${
-              nextCategory === 'None' ? 'Uncategorized' : nextCategory
-            }.`
-          )
-        }
-      })
+      commitChange(id)
+      applyLocalMutation(id, 'category', nextCategory)
     },
-    [getItem, applyChange, commitChange, revertChange, mutate, showError]
+    [getItem, applyChange, commitChange]
   )
 
   function handleSearchChange(value: string) {

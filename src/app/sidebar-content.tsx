@@ -4,11 +4,9 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 import type { DragEvent, ReactNode } from 'react'
-import { archiveVideo, updateVideoCategory } from './actions'
 import { useVideoSync } from './video-sync-context'
-import { useOptimisticMutation } from '@/utils/use-optimistic-mutation'
-import { useToast } from '@/components/ui/toast-provider'
 import { VIDEO_DRAG_MIME_TYPE } from './video-drag'
+import { applyLocalMutation } from '@/utils/offline/apply-local-mutation'
 
 type SidebarContentProps = {
   userEmail: string | null
@@ -33,10 +31,8 @@ export default function SidebarContent({
   onCollapse,
   onSignOut,
 }: SidebarContentProps) {
-  const { categories, allCount, uncategorizedCount, getListItem, applyListChange, commitListChange, revertListChange } =
+  const { categories, allCount, uncategorizedCount, getListItem, applyListChange, commitListChange } =
     useVideoSync()
-  const { mutate } = useOptimisticMutation()
-  const { showError } = useToast()
   const isAllActive = !isArchivedActive && activeCategory === 'all'
   const isUncategorizedActive = !isArchivedActive && activeCategory === null
 
@@ -47,18 +43,8 @@ export default function SidebarContent({
     if (currentCategory === category) return
 
     applyListChange(videoId, { category })
-    mutate({ run: () => updateVideoCategory(videoId, category) }).then((outcome) => {
-      if (outcome.ok) {
-        commitListChange(videoId)
-      } else {
-        revertListChange(videoId)
-        showError(
-          `Couldn't move "${previous.title ?? 'this video'}" to ${
-            category === 'None' ? 'Uncategorized' : category
-          }.`
-        )
-      }
-    })
+    commitListChange(videoId)
+    applyLocalMutation(videoId, 'category', category)
   }
 
   function handleDropArchive(videoId: number) {
@@ -66,14 +52,9 @@ export default function SidebarContent({
     if (!previous || previous.archived === true) return
 
     applyListChange(videoId, { archived: true, read: true })
-    mutate({ run: () => archiveVideo(videoId) }).then((outcome) => {
-      if (outcome.ok) {
-        commitListChange(videoId)
-      } else {
-        revertListChange(videoId)
-        showError(`Couldn't archive "${previous.title ?? 'this video'}".`)
-      }
-    })
+    commitListChange(videoId)
+    applyLocalMutation(videoId, 'archived', true)
+    applyLocalMutation(videoId, 'read', true)
   }
 
   return (

@@ -3,6 +3,8 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBackgroundSync } from '@/utils/offline/use-background-sync'
+import { usePendingMutationCount } from '@/utils/offline/use-pending-mutation-count'
+import { subscribeToOpenReaderRequests } from '@/utils/offline/open-reader'
 import OfflineReader from './offline-reader'
 
 function subscribeToConnectivity(callback: () => void) {
@@ -32,6 +34,7 @@ export default function OfflineIndicator() {
     getIsOffline,
     getIsOfflineServerSnapshot
   )
+  const pendingCount = usePendingMutationCount()
   const [isReaderOpen, setIsReaderOpen] = useState(false)
 
   useEffect(() => {
@@ -56,6 +59,11 @@ export default function OfflineIndicator() {
   useEffect(() => {
     router.prefetch('/offline')
   }, [router])
+
+  // Lets other components (e.g. action-bar.tsx, when it deliberately skips
+  // navigating back after an offline archive) ask for the reader without
+  // needing a prop or context connection to this component.
+  useEffect(() => subscribeToOpenReaderRequests(() => setIsReaderOpen(true)), [])
 
   // A global safety net: any same-origin link clicked while offline (a
   // video card, the Back link, pagination, a category in the sidebar —
@@ -106,9 +114,11 @@ export default function OfflineIndicator() {
 
   return (
     <>
-      {isOffline && (
+      {isOffline ? (
         <div className="sticky top-0 z-50 flex items-center justify-center gap-2 bg-qw-accent/15 px-4 py-2 text-center text-xs font-semibold text-qw-accent">
-          You&apos;re offline.
+          You&apos;re offline
+          {pendingCount > 0 ? ` — ${pendingText(pendingCount)} will sync once you're back online` : ''}
+          .
           <button
             type="button"
             onClick={() => setIsReaderOpen(true)}
@@ -117,6 +127,12 @@ export default function OfflineIndicator() {
             Read saved videos
           </button>
         </div>
+      ) : (
+        pendingCount > 0 && (
+          <div className="sticky top-0 z-50 flex items-center justify-center gap-2 bg-qw-accent/10 px-4 py-1.5 text-center text-xs font-medium text-qw-muted-1">
+            Syncing {pendingText(pendingCount)}…
+          </div>
+        )
       )}
 
       {isReaderOpen && (
@@ -128,4 +144,8 @@ export default function OfflineIndicator() {
       )}
     </>
   )
+}
+
+function pendingText(count: number) {
+  return `${count} change${count === 1 ? '' : 's'}`
 }

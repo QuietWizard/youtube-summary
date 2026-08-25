@@ -72,7 +72,6 @@ export default async function VideoDetailPage({
         <FontSizeProvider initialScale={initialFontScale}>
           <ActionBar
             videoId={video.id}
-            title={video.title}
             backHref={backHref}
             initialCategory={normalizedCategory}
             categories={categories}
