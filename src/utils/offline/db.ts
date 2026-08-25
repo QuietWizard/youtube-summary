@@ -1,11 +1,15 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'video-summaries-offline'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const STORE_VIDEOS = 'videos'
 const STORE_THUMBNAILS = 'thumbnails'
 const STORE_META = 'meta'
+const STORE_MUTATIONS = 'mutations'
 const SYNCED_AT_KEY = 'syncedAt'
+const WATERMARK_KEY = 'watermark'
+
+export type MutationField = 'read' | 'archived' | 'category'
 
 export type OfflineVideo = {
   id: number
@@ -18,6 +22,25 @@ export type OfflineVideo = {
   read: boolean | null
   videoPublished: string | null
   category: string | null
+  // ISO timestamps per field, set server-side by the yts_info_set_updated_at
+  // trigger. Used to resolve conflicts when pushing a queued local mutation:
+  // see sync-mutations.ts.
+  field_updated_at: Partial<Record<MutationField, string>>
+}
+
+// One pending, not-yet-pushed local edit. Keyed by `${videoId}:${field}` so
+// repeated edits to the same field (e.g. toggling read on and off) coalesce
+// into a single queued entry rather than piling up — only the latest value
+// and its timestamp matter.
+export type PendingMutation = {
+  key: string
+  videoId: number
+  field: MutationField
+  value: boolean | string
+  // When the user actually made this change, on this device — compared
+  // against the server's field_updated_at at push time to decide whether
+  // this edit is still current or has been superseded elsewhere.
+  createdAt: number
 }
 
 interface OfflineDBSchema extends DBSchema {
@@ -36,7 +59,12 @@ interface OfflineDBSchema extends DBSchema {
   }
   [STORE_META]: {
     key: string
-    value: number
+    value: number | string | null
+  }
+  [STORE_MUTATIONS]: {
+    key: string
+    value: PendingMutation
+    indexes: { videoId: number }
   }
 }
 
@@ -57,6 +85,10 @@ function getDb() {
         }
         if (oldVersion < 2) {
           db.createObjectStore(STORE_THUMBNAILS)
+        }
+        if (oldVersion < 3) {
+          const mutationStore = db.createObjectStore(STORE_MUTATIONS, { keyPath: 'key' })
+          mutationStore.createIndex('videoId', 'videoId')
         }
       },
     })
@@ -116,6 +148,12 @@ export async function getAllOfflineVideos(): Promise<OfflineVideo[]> {
   return db.getAll(STORE_VIDEOS)
 }
 
+export async function getOfflineVideoById(id: number): Promise<OfflineVideo | undefined> {
+  const db = await getDb()
+  if (!db) return undefined
+  return db.get(STORE_VIDEOS, id)
+}
+
 // Mirrors the lookup order used server-side in video/[id]/page.tsx: the
 // route param is usually the YouTube video id, occasionally the row id.
 export async function getOfflineVideoByKey(
@@ -135,5 +173,56 @@ export async function getOfflineVideoByKey(
 export async function getSyncedAt(): Promise<number | undefined> {
   const db = await getDb()
   if (!db) return undefined
-  return db.get(STORE_META, SYNCED_AT_KEY)
+  const value = await db.get(STORE_META, SYNCED_AT_KEY)
+  return typeof value === 'number' ? value : undefined
+}
+
+export async function getWatermark(): Promise<string | null> {
+  const db = await getDb()
+  if (!db) return null
+  const value = await db.get(STORE_META, WATERMARK_KEY)
+  return typeof value === 'string' ? value : null
+}
+
+export async function setWatermark(watermark: string | null) {
+  const db = await getDb()
+  if (!db) return
+  await db.put(STORE_META, watermark, WATERMARK_KEY)
+}
+
+// --- Pending mutation queue -------------------------------------------
+
+export async function enqueueMutation(
+  videoId: number,
+  field: MutationField,
+  value: boolean | string
+) {
+  const db = await getDb()
+  if (!db) return
+
+  await db.put(STORE_MUTATIONS, {
+    key: `${videoId}:${field}`,
+    videoId,
+    field,
+    value,
+    createdAt: Date.now(),
+  })
+}
+
+export async function getPendingMutations(): Promise<PendingMutation[]> {
+  const db = await getDb()
+  if (!db) return []
+  return db.getAll(STORE_MUTATIONS)
+}
+
+export async function getPendingMutationCount(): Promise<number> {
+  const db = await getDb()
+  if (!db) return 0
+  return db.count(STORE_MUTATIONS)
+}
+
+export async function removeMutation(key: string) {
+  const db = await getDb()
+  if (!db) return
+  await db.delete(STORE_MUTATIONS, key)
 }

@@ -1,18 +1,27 @@
 'use client'
 
 import { useEffect } from 'react'
-import { syncVideoList } from './db'
+import { getWatermark, setWatermark, syncVideoList } from './db'
 import { syncThumbnails } from './sync-thumbnails'
+import { flushMutationQueue } from './sync-mutations'
 import type { OfflineVideo } from './db'
 
 const SYNC_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
 
 // Keeps the local (IndexedDB) copy of the unarchived library warm: on
 // mount, on reconnect, and on a slow background interval. This is what
-// makes both offline reading and the "thumbnails survive even if the
-// source video disappears" behavior possible — see db.ts and
-// use-local-thumbnail.ts. It never blocks or affects what's on screen; a
-// failed sync just leaves the local copy at its last-known state.
+// makes offline reading, the "thumbnails survive even if the source video
+// disappears" behavior, and instant local-first mutations all possible —
+// see db.ts, use-local-thumbnail.ts, and sync-mutations.ts. It never
+// blocks or affects what's on screen; a failed sync just leaves the local
+// copy at its last-known state.
+//
+// Each pass pulls before it pushes: fresh server data (if anything changed
+// — see /api/sync/watermark) is what lets a queued local edit be checked
+// for conflicts against the *current* field_updated_at before it's pushed,
+// which matters most exactly when it's been a while — reconnecting after
+// being offline, or switching to a device that's been idle — since that's
+// when the server is most likely to have moved on without this device.
 export function useBackgroundSync() {
   useEffect(() => {
     // Best-effort request for the browser to stop treating this origin's
@@ -35,22 +44,11 @@ export function useBackgroundSync() {
       }
 
       try {
-        const response = await fetch('/api/sync', { cache: 'no-store' })
-        if (!response.ok || cancelled) {
-          return
-        }
-
-        const { videos } = (await response.json()) as { videos: OfflineVideo[] }
+        await pullIfStale(() => cancelled)
         if (cancelled) {
           return
         }
-
-        const { addedIds } = await syncVideoList(videos)
-        if (cancelled || addedIds.length === 0) {
-          return
-        }
-
-        await syncThumbnails(videos, addedIds)
+        await flushMutationQueue()
       } catch {
         // Best-effort — the local cache just stays at its last-known state.
       }
@@ -66,4 +64,35 @@ export function useBackgroundSync() {
       window.removeEventListener('online', sync)
     }
   }, [])
+}
+
+async function pullIfStale(isCancelled: () => boolean) {
+  const watermarkResponse = await fetch('/api/sync/watermark', { cache: 'no-store' })
+  if (!watermarkResponse.ok || isCancelled()) {
+    return
+  }
+
+  const { watermark } = (await watermarkResponse.json()) as { watermark: string | null }
+  const localWatermark = await getWatermark()
+
+  if (watermark === localWatermark) {
+    return
+  }
+
+  const response = await fetch('/api/sync', { cache: 'no-store' })
+  if (!response.ok || isCancelled()) {
+    return
+  }
+
+  const { videos } = (await response.json()) as { videos: OfflineVideo[] }
+  if (isCancelled()) {
+    return
+  }
+
+  const { addedIds } = await syncVideoList(videos)
+  await setWatermark(watermark)
+
+  if (!isCancelled() && addedIds.length > 0) {
+    await syncThumbnails(videos, addedIds)
+  }
 }
