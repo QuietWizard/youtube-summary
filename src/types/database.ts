@@ -11,4 +11,6 @@ export type Video = {
   archived: boolean | null;
   videoPublished: string | null;
   category: string | null;
+  updated_at: string;
+  field_updated_at: Partial<Record<'read' | 'archived' | 'category', string>>;
 }
