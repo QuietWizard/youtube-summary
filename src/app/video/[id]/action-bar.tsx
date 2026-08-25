@@ -14,15 +14,29 @@ import { requestOpenReader } from '@/utils/offline/open-reader'
 
 type ActionBarProps = {
   videoId: number
-  backHref: string
   initialCategory: string
   categories: string[]
   initialRead: boolean
-}
+} & (
+  | {
+      // Normal mode: a real route, "Back" is a real link, and archiving
+      // navigates away via the router.
+      backHref: string
+      onClose?: undefined
+    }
+  | {
+      // Overlay mode (local-article-host.tsx): there's no route to link
+      // back to — closing is just local React state, which is always safe
+      // regardless of connectivity, unlike a real navigation.
+      backHref?: undefined
+      onClose: () => void
+    }
+)
 
 export default function ActionBar({
   videoId,
   backHref,
+  onClose,
   initialCategory,
   categories,
   initialRead,
@@ -137,6 +151,13 @@ export default function ActionBar({
     applyLocalMutation(videoId, 'archived', true)
     applyLocalMutation(videoId, 'read', true)
 
+    if (onClose) {
+      // Overlay mode: closing is local state, not a navigation — always
+      // safe, no connectivity concern at all.
+      onClose()
+      return
+    }
+
     // Archiving itself now works fine offline (applied locally, queued for
     // later — see apply-local-mutation.ts). The one thing that still isn't
     // safe offline is this navigation: router.push's own fetch can fail
@@ -155,25 +176,48 @@ export default function ActionBar({
   return (
     <div className="sticky top-0 z-10 -mt-7 mb-7 flex flex-wrap items-center justify-between gap-3 border-b border-qw-border bg-qw-bg/90 py-3.5 backdrop-blur-md">
       <div className="flex items-center gap-2.5">
-        <Link
-          href={backHref}
-          className="flex h-[38px] items-center gap-1.5 rounded-md border border-qw-border bg-qw-surface-1 px-3 text-[13px] font-medium text-qw-fg-2 transition-colors hover:border-qw-border-strong hover:bg-qw-surface-2"
-        >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-[38px] items-center gap-1.5 rounded-md border border-qw-border bg-qw-surface-1 px-3 text-[13px] font-medium text-qw-fg-2 transition-colors hover:border-qw-border-strong hover:bg-qw-surface-2"
           >
-            <line x1="19" y1="12" x2="5" y2="12" />
-            <polyline points="12 19 5 12 12 5" />
-          </svg>
-          Back
-        </Link>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            Back
+          </button>
+        ) : (
+          <Link
+            href={backHref}
+            className="flex h-[38px] items-center gap-1.5 rounded-md border border-qw-border bg-qw-surface-1 px-3 text-[13px] font-medium text-qw-fg-2 transition-colors hover:border-qw-border-strong hover:bg-qw-surface-2"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            Back
+          </Link>
+        )}
 
         <div ref={menuRef} className="relative">
           <button

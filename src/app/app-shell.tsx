@@ -8,7 +8,9 @@ import { createClient } from '@/utils/supabase/client'
 import SidebarContent from './sidebar-content'
 import PullToRefresh from './pull-to-refresh'
 import OfflineIndicator from './offline-indicator'
+import LocalArticleHost from './local-article-host'
 import { VideoSyncProvider } from './video-sync-context'
+import { LocalVideosProvider } from './local-videos-context'
 import { ToastProvider } from '@/components/ui/toast-provider'
 import type { CategoryNavItem } from './layout'
 import { NAV_COLLAPSED_COOKIE } from './nav-cookie'
@@ -74,18 +76,20 @@ export default function AppShell({
         initialAllCount={allCount}
         initialUncategorizedCount={uncategorizedCount}
       >
-        <AppShellContent
-          userEmail={userEmail}
-          activeCategory={activeCategory}
-          isArchivedActive={isArchivedActive}
-          isMobileMenuOpen={isMobileMenuOpen}
-          setIsMobileMenuOpen={setIsMobileMenuOpen}
-          isNavCollapsed={isNavCollapsed}
-          toggleNavCollapsed={toggleNavCollapsed}
-          handleSignOut={handleSignOut}
-        >
-          {children}
-        </AppShellContent>
+        <LocalVideosProvider>
+          <AppShellContent
+            userEmail={userEmail}
+            activeCategory={activeCategory}
+            isArchivedActive={isArchivedActive}
+            isMobileMenuOpen={isMobileMenuOpen}
+            setIsMobileMenuOpen={setIsMobileMenuOpen}
+            isNavCollapsed={isNavCollapsed}
+            toggleNavCollapsed={toggleNavCollapsed}
+            handleSignOut={handleSignOut}
+          >
+            {children}
+          </AppShellContent>
+        </LocalVideosProvider>
       </VideoSyncProvider>
     </ToastProvider>
   )
@@ -115,6 +119,7 @@ function AppShellContent({
   return (
     <div className="relative min-h-screen bg-qw-bg font-ui">
       <OfflineIndicator />
+      <LocalArticleHost />
 
       {/* Mobile top bar */}
       <div className="sticky top-0 z-40 flex items-center gap-3 border-b border-qw-border bg-qw-bg/85 px-4 py-3 backdrop-blur-lg md:hidden">

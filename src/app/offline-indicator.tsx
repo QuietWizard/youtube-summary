@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useBackgroundSync } from '@/utils/offline/use-background-sync'
 import { usePendingMutationCount } from '@/utils/offline/use-pending-mutation-count'
 import { subscribeToOpenReaderRequests } from '@/utils/offline/open-reader'
+import { requestOpenArticle } from '@/utils/offline/open-article'
+import { useLocalVideos } from './local-videos-context'
 import OfflineReader from './offline-reader'
 
 function subscribeToConnectivity(callback: () => void) {
@@ -35,6 +37,7 @@ export default function OfflineIndicator() {
     getIsOfflineServerSnapshot
   )
   const pendingCount = usePendingMutationCount()
+  const { getLocalVideoByKey } = useLocalVideos()
   const [isReaderOpen, setIsReaderOpen] = useState(false)
 
   useEffect(() => {
@@ -65,17 +68,24 @@ export default function OfflineIndicator() {
   // needing a prop or context connection to this component.
   useEffect(() => subscribeToOpenReaderRequests(() => setIsReaderOpen(true)), [])
 
-  // A global safety net: any same-origin link clicked while offline (a
-  // video card, the Back link, pagination, a category in the sidebar —
-  // anything rendered as an <a>) would otherwise attempt a client-side
-  // navigation fetch that's guaranteed to fail. There's no way to catch
-  // that failure after the fact and recover gracefully — router.push and
-  // Link give back no promise to catch — so the only reliable fix is to
-  // stop it before it starts. Runs in the capture phase to win the race
-  // against Next's own Link click handler.
+  // Two things happen here for any same-origin link click, in order:
+  //
+  // 1. If it points at a specific video's article and that video is
+  //    already synced locally, open it instantly instead of navigating —
+  //    online or offline, since there's no reason to wait on (or risk) a
+  //    server round trip for something already sitting in IndexedDB. See
+  //    local-article-host.tsx.
+  // 2. Otherwise, while offline: anything else (pagination, a category,
+  //    search, an unsynced video) would attempt a client-side navigation
+  //    fetch that's guaranteed to fail. There's no way to catch that
+  //    failure after the fact and recover gracefully — router.push and
+  //    Link give back no promise to catch — so the fallback is to stop it
+  //    before it starts and show the simplified offline reader instead.
+  //
+  // Runs in the capture phase to win the race against Next's own Link
+  // click handler.
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
-      if (navigator.onLine) return
       if (event.defaultPrevented) return
       if (event.button !== 0) return
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -104,13 +114,25 @@ export default function OfflineIndicator() {
         return
       }
 
-      event.preventDefault()
-      setIsReaderOpen(true)
+      const videoMatch = url.pathname.match(/^\/video\/([^/]+)$/)
+      if (videoMatch) {
+        const localVideo = getLocalVideoByKey(decodeURIComponent(videoMatch[1]))
+        if (localVideo) {
+          event.preventDefault()
+          requestOpenArticle({ id: localVideo.id, href })
+          return
+        }
+      }
+
+      if (!navigator.onLine) {
+        event.preventDefault()
+        setIsReaderOpen(true)
+      }
     }
 
     document.addEventListener('click', handleDocumentClick, true)
     return () => document.removeEventListener('click', handleDocumentClick, true)
-  }, [])
+  }, [getLocalVideoByKey])
 
   return (
     <>
