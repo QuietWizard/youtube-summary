@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import SidebarContent from './sidebar-content'
 import PullToRefresh from './pull-to-refresh'
+import OfflineIndicator from './offline-indicator'
 import { VideoSyncProvider } from './video-sync-context'
 import { ToastProvider } from '@/components/ui/toast-provider'
 import type { CategoryNavItem } from './layout'
@@ -39,7 +40,9 @@ export default function AppShell({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isNavCollapsed, setIsNavCollapsed] = useState(initialNavCollapsed)
   const shouldShowShell =
-    pathname !== '/login' && !pathname.startsWith('/auth/callback')
+    pathname !== '/login' &&
+    pathname !== '/offline' &&
+    !pathname.startsWith('/auth/callback')
 
   const toggleNavCollapsed = () => {
     setIsNavCollapsed((prev) => {
@@ -111,6 +114,8 @@ function AppShellContent({
 }) {
   return (
     <div className="relative min-h-screen bg-qw-bg font-ui">
+      <OfflineIndicator />
+
       {/* Mobile top bar */}
       <div className="sticky top-0 z-40 flex items-center gap-3 border-b border-qw-border bg-qw-bg/85 px-4 py-3 backdrop-blur-lg md:hidden">
         <button
