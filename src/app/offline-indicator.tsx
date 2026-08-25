@@ -57,6 +57,53 @@ export default function OfflineIndicator() {
     router.prefetch('/offline')
   }, [router])
 
+  // A global safety net: any same-origin link clicked while offline (a
+  // video card, the Back link, pagination, a category in the sidebar —
+  // anything rendered as an <a>) would otherwise attempt a client-side
+  // navigation fetch that's guaranteed to fail. There's no way to catch
+  // that failure after the fact and recover gracefully — router.push and
+  // Link give back no promise to catch — so the only reliable fix is to
+  // stop it before it starts. Runs in the capture phase to win the race
+  // against Next's own Link click handler.
+  useEffect(() => {
+    function handleDocumentClick(event: MouseEvent) {
+      if (navigator.onLine) return
+      if (event.defaultPrevented) return
+      if (event.button !== 0) return
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+
+      const target = event.target
+      if (!(target instanceof Element)) return
+
+      const anchor = target.closest('a')
+      if (!anchor) return
+      if (anchor.target && anchor.target !== '_self') return
+      if (anchor.hasAttribute('download')) return
+
+      const href = anchor.getAttribute('href')
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) {
+        return
+      }
+
+      let url: URL
+      try {
+        url = new URL(href, window.location.href)
+      } catch {
+        return
+      }
+
+      if (url.origin !== window.location.origin) {
+        return
+      }
+
+      event.preventDefault()
+      setIsReaderOpen(true)
+    }
+
+    document.addEventListener('click', handleDocumentClick, true)
+    return () => document.removeEventListener('click', handleDocumentClick, true)
+  }, [])
+
   return (
     <>
       {isOffline && (

@@ -327,6 +327,14 @@ export default function VideosClient({
     }
 
     searchDebounceRef.current = setTimeout(() => {
+      // Search is a live DB query - there's nothing useful it can do
+      // offline anyway, and attempting it risks the same navigation
+      // failure as everything else below. Leave the typed text in place
+      // and just skip the navigation.
+      if (!navigator.onLine) {
+        return
+      }
+
       router.push(
         buildPageHref(
           categoryParam,
@@ -430,6 +438,12 @@ export default function VideosClient({
             onChange={(event) => {
               const nextPageSize = Number(event.target.value)
               document.cookie = `${PAGE_SIZE_COOKIE}=${nextPageSize}; path=/; max-age=${PAGE_SIZE_COOKIE_MAX_AGE}; SameSite=Lax`
+
+              if (!navigator.onLine) {
+                showError("You're offline — this will apply next time you're online.")
+                return
+              }
+
               router.push(
                 buildPageHref(
                   categoryParam,
