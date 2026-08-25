@@ -204,9 +204,18 @@ export default function VideoCard({
 }
 
 function formatPublishedDate(date: string) {
+  // A fixed timeZone (rather than the environment default) is required
+  // here: this is a 'use client' component, so it's rendered once on the
+  // server during SSR and again on the client during hydration. Without
+  // pinning it, "undefined" resolves to whatever timezone each environment
+  // happens to be in — the server's (typically UTC) and the visitor's
+  // browser rarely agree — so a video published near a day boundary can
+  // render a different calendar date on each side, which React treats as
+  // a hydration mismatch.
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'UTC',
   }).format(new Date(date))
 }

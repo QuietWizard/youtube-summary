@@ -185,9 +185,14 @@ function formatPublishedDate(date: string | null) {
     return 'Publication date unknown'
   }
 
+  // Fixed timeZone for consistency with the same date shown on video cards
+  // (video-card.tsx) — this is a Server Component so it isn't itself at
+  // risk of a hydration mismatch, but the displayed date should still
+  // agree with the client-rendered card the user came from.
   return new Intl.DateTimeFormat(undefined, {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'UTC',
   }).format(new Date(date))
 }

@@ -248,10 +248,13 @@ function OfflineSummaryLine({ line }: { line: string }) {
 }
 
 function formatPublishedDate(date: string) {
+  // Fixed timeZone — see the identical comment in video-card.tsx. Same
+  // 'use client' + SSR + hydration situation applies here.
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'UTC',
   }).format(new Date(date))
 }
 
