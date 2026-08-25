@@ -149,6 +149,16 @@ export default function ActionBar({
   }
 
   function handleArchive() {
+    // archiveVideo() needs a connection to persist regardless, and the
+    // router.push below has no way to recover if its own fetch fails while
+    // offline — on at least one browser/OS combination that failure
+    // crashes to a native error screen instead of failing gracefully. Skip
+    // the whole thing rather than attempt either.
+    if (!navigator.onLine) {
+      showError("You're offline — archiving needs a connection.")
+      return
+    }
+
     const adjustment = computeNavCountsAdjustment(
       { archived: false, category: selectedCategory },
       { archived: true, category: selectedCategory }
