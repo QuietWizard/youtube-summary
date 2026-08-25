@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   getAllOfflineVideos,
@@ -14,6 +14,15 @@ type LocalVideosContextValue = {
   // Mirrors the lookup order used server-side (video/[id]/page.tsx): the
   // route param is usually the YouTube video id, occasionally the row id.
   getLocalVideoByKey: (key: string) => OfflineVideo | undefined
+  // The full local cache, for computing the feed itself (see local-feed.ts)
+  // rather than looking up one video at a time. A stable reference until
+  // something actually changes, so it's safe to use directly as a
+  // useMemo/useEffect dependency.
+  allVideos: OfflineVideo[]
+  // True once at least one sync has ever populated the local cache — lets
+  // callers (the feed click-guard in offline-indicator.tsx) tell "nothing
+  // synced yet" apart from "genuinely zero videos".
+  hasLocalData: boolean
 }
 
 const LocalVideosContext = createContext<LocalVideosContextValue | null>(null)
@@ -56,6 +65,8 @@ export function LocalVideosProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const allVideos = useMemo(() => Array.from(byId.values()), [byId])
+
   const value: LocalVideosContextValue = {
     getLocalVideoById: (id) => byId.get(id),
     getLocalVideoByKey: (key) => {
@@ -66,6 +77,8 @@ export function LocalVideosProvider({ children }: { children: ReactNode }) {
       if (!Number.isInteger(rowId) || rowId < 1) return undefined
       return byId.get(rowId)
     },
+    allVideos,
+    hasLocalData: byId.size > 0,
   }
 
   return (
