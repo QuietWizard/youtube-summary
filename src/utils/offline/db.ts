@@ -66,22 +66,30 @@ function getDb() {
 }
 
 // Replaces the metadata for the current unarchived set in one atomic
-// transaction, and reports which video ids are new (need a thumbnail
-// downloaded — see use-background-sync.ts) and which fell out of the set
+// transaction, and reports which video ids still need a thumbnail
+// downloaded (see use-background-sync.ts) and which fell out of the set
 // (archived, or deleted — their thumbnail blob is dropped here since that
 // part doesn't need a network round trip). Downloading itself can't happen
 // inside this transaction: IndexedDB auto-commits a transaction that's left
 // idle across an async gap like a fetch.
+//
+// "Needs a thumbnail" is checked against the thumbnails store directly
+// rather than just newly-added video ids — a video whose metadata already
+// existed locally before thumbnail downloading shipped (or whose download
+// failed last time) still needs one, even though it isn't "new".
 export async function syncVideoList(
   videos: OfflineVideo[]
-): Promise<{ addedIds: number[]; removedIds: number[] }> {
+): Promise<{ idsNeedingThumbnail: number[]; removedIds: number[] }> {
   const db = await getDb()
-  if (!db) return { addedIds: [], removedIds: [] }
+  if (!db) return { idsNeedingThumbnail: [], removedIds: [] }
 
   const existingIds = new Set(await db.getAllKeys(STORE_VIDEOS))
+  const existingThumbnailIds = new Set(await db.getAllKeys(STORE_THUMBNAILS))
   const nextIds = new Set(videos.map((video) => video.id))
-  const addedIds = videos.map((video) => video.id).filter((id) => !existingIds.has(id))
   const removedIds = Array.from(existingIds).filter((id) => !nextIds.has(id))
+  const idsNeedingThumbnail = videos
+    .map((video) => video.id)
+    .filter((id) => !existingThumbnailIds.has(id))
 
   const tx = db.transaction([STORE_VIDEOS, STORE_THUMBNAILS, STORE_META], 'readwrite')
   const videoStore = tx.objectStore(STORE_VIDEOS)
@@ -95,7 +103,7 @@ export async function syncVideoList(
     tx.done,
   ])
 
-  return { addedIds, removedIds }
+  return { idsNeedingThumbnail, removedIds }
 }
 
 export async function putThumbnail(id: number, blob: Blob) {

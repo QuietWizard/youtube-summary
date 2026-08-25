@@ -45,12 +45,12 @@ export function useBackgroundSync() {
           return
         }
 
-        const { addedIds } = await syncVideoList(videos)
-        if (cancelled || addedIds.length === 0) {
+        const { idsNeedingThumbnail } = await syncVideoList(videos)
+        if (cancelled || idsNeedingThumbnail.length === 0) {
           return
         }
 
-        await syncThumbnails(videos, addedIds)
+        await syncThumbnails(videos, idsNeedingThumbnail)
       } catch {
         // Best-effort — the local cache just stays at its last-known state.
       }
