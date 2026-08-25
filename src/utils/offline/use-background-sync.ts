@@ -8,6 +8,23 @@ import type { OfflineVideo } from './db'
 
 const SYNC_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
 
+// Fired whenever a pull actually pulled something (as opposed to the
+// watermark check finding nothing new), so anything holding its own
+// in-memory copy of the local video list — see local-videos-context.tsx —
+// can refresh without polling.
+const SYNC_COMPLETED_EVENT = 'offline:sync-completed'
+
+export function subscribeToSyncCompleted(callback: () => void) {
+  window.addEventListener(SYNC_COMPLETED_EVENT, callback)
+  return () => window.removeEventListener(SYNC_COMPLETED_EVENT, callback)
+}
+
+function notifySyncCompleted() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(SYNC_COMPLETED_EVENT))
+  }
+}
+
 // Keeps the local (IndexedDB) copy of the unarchived library warm: on
 // mount, on reconnect, and on a slow background interval. This is what
 // makes offline reading, the "thumbnails survive even if the source video
@@ -91,6 +108,7 @@ async function pullIfStale(isCancelled: () => boolean) {
 
   const { idsNeedingThumbnail } = await syncVideoList(videos)
   await setWatermark(watermark)
+  notifySyncCompleted()
 
   if (!isCancelled() && idsNeedingThumbnail.length > 0) {
     await syncThumbnails(videos, idsNeedingThumbnail)

@@ -1,13 +1,12 @@
-import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUser } from '@/utils/supabase/get-current-user'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { getCategories } from '@/utils/get-categories'
 import type { Video } from '@/types/database'
-import Summary from './summary'
 import ActionBar from './action-bar'
 import VideoHero from './video-hero'
+import { ArticleContent, normalizeCategory } from './article-content'
 import { FontSizeProvider } from './font-size-context'
 import {
   DEFAULT_FONT_SCALE,
@@ -78,45 +77,14 @@ export default async function VideoDetailPage({
             initialRead={video.read === true}
           />
 
-          <div className="mb-2.5 flex items-center gap-3.5 text-[13px] font-medium text-qw-muted-1">
-            <span>{formatPublishedDate(video.videoPublished)}</span>
-            <span className="text-qw-muted-3">|</span>
-            <Link
-              href={`https://www.youtube.com/watch?v=${video.videoId}`}
-              target="_blank"
-              rel="noopener"
-              className="flex items-center gap-1.5 text-qw-accent hover:underline"
-            >
-              Watch on YouTube
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-            </Link>
-          </div>
-
-          <h1 className="mb-3 max-w-[720px] font-display text-[34px] leading-tight font-semibold text-qw-fg-1">
-            {video.title || 'Untitled video'}
-          </h1>
-          <p className="mb-7 text-[15px] font-medium text-qw-fg-2">
-            <Link href={`https://www.youtube.com/channel/${video.videoChannelId}`}>
-              {video.videoChannelTitle || 'Unknown channel'}
-            </Link>
-          </p>
-
-          <hr className="mb-7 border-qw-border" />
-
-          <Summary summary={video.summary} />
+          <ArticleContent
+            title={video.title}
+            videoId={video.videoId}
+            videoChannelId={video.videoChannelId}
+            videoChannelTitle={video.videoChannelTitle}
+            videoPublished={video.videoPublished}
+            summary={video.summary}
+          />
         </FontSizeProvider>
       </article>
     </div>
@@ -161,10 +129,6 @@ async function getVideoByUrlId(id: string) {
   return videoByRowId
 }
 
-function normalizeCategory(category: string | null) {
-  return category?.trim() || 'None'
-}
-
 function parseFontScale(value: string | undefined) {
   const parsed = Number(value)
 
@@ -177,21 +141,4 @@ function parseFontScale(value: string | undefined) {
 
 function isSafeRedirectTarget(target: string | undefined): target is string {
   return typeof target === 'string' && target.startsWith('/') && !target.startsWith('//')
-}
-
-function formatPublishedDate(date: string | null) {
-  if (!date) {
-    return 'Publication date unknown'
-  }
-
-  // Fixed timeZone for consistency with the same date shown on video cards
-  // (video-card.tsx) — this is a Server Component so it isn't itself at
-  // risk of a hydration mismatch, but the displayed date should still
-  // agree with the client-rendered card the user came from.
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(date))
 }
