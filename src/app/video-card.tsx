@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import type { VideoListItem } from './page'
 import { VIDEO_DRAG_MIME_TYPE } from './video-drag'
+import { useLocalThumbnail } from '@/utils/offline/use-local-thumbnail'
 
 type VideoCardProps = {
   video: VideoListItem
@@ -35,6 +36,7 @@ export default function VideoCard({
 
   const videoKey = video.videoId || String(video.id)
   const href = `/video/${videoKey}?from=${encodeURIComponent(listHref)}`
+  const localThumbnail = useLocalThumbnail(video.id)
   const isUncategorized = category === 'None'
   const categoryOptions = ['None', ...categories.filter((c) => c !== 'None')]
 
@@ -87,16 +89,30 @@ export default function VideoCard({
     >
       <Link href={href} draggable={false} className="flex flex-1 flex-col">
         <div className="relative aspect-video w-full overflow-hidden rounded-t-lg bg-[linear-gradient(135deg,#131B2E_0%,#0D1220_60%,#1C2B44_100%)]">
-          {video.thumbnail && (
-            <Image
-              src={`https://i.ytimg.com/vi/${videoKey}/mqdefault.jpg`}
+          {localThumbnail ? (
+            // A downloaded thumbnail (see use-local-thumbnail.ts) is a
+            // blob: URL, which next/image's optimizer can't fetch — a
+            // plain <img> is what actually renders it. Preferred over the
+            // remote URL below even online, once it exists.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={localThumbnail}
               alt=""
-              fill
               draggable={false}
-              sizes="(min-width: 768px) 320px, 100vw"
-              loading={priority ? 'eager' : 'lazy'}
-              className="object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
             />
+          ) : (
+            video.thumbnail && (
+              <Image
+                src={`https://i.ytimg.com/vi/${videoKey}/mqdefault.jpg`}
+                alt=""
+                fill
+                draggable={false}
+                sizes="(min-width: 768px) 320px, 100vw"
+                loading={priority ? 'eager' : 'lazy'}
+                className="object-cover"
+              />
+            )
           )}
           <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(7,9,15,0.02)_0%,rgba(7,9,15,0)_40%,rgba(7,9,15,0.55)_100%)]" />
           {isRead && (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getAllOfflineVideos, getSyncedAt } from '@/utils/offline/db'
+import { useLocalThumbnail } from '@/utils/offline/use-local-thumbnail'
 import type { OfflineVideo } from '@/utils/offline/db'
 
 type OfflineReaderProps = {
@@ -45,10 +46,10 @@ export default function OfflineReader({ onClose }: OfflineReaderProps) {
       <div className="mb-7 flex items-center justify-between gap-3 border-b border-qw-border pb-5">
         <div>
           <div className="mb-1.5 text-[11px] font-bold tracking-[0.2em] text-qw-accent uppercase">
-            Offline
+            Saved Videos
           </div>
           <h1 className="font-display text-[22px] font-semibold text-qw-fg-1">
-            Saved for reading
+            {activeVideo ? activeVideo.title || 'Untitled video' : 'Read what you\'ve saved'}
           </h1>
           <p className="mt-1 text-[13px] text-qw-muted-2">
             {syncedAt
@@ -112,34 +113,52 @@ function OfflineGrid({
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
       {videos.map((video) => (
-        <button
-          key={video.id}
-          type="button"
-          onClick={() => onSelect(video.id)}
-          className="flex flex-col overflow-hidden rounded-lg border border-qw-border bg-qw-surface-1 text-left transition-colors hover:border-qw-border-strong"
-        >
-          <div className="relative aspect-video w-full overflow-hidden bg-[linear-gradient(135deg,#131B2E_0%,#0D1220_60%,#1C2B44_100%)]">
-            {video.thumbnail && (
-              // The service worker cache-first-serves this from i.ytimg.com,
-              // so a plain <img> (no next/image optimization pass) is what
-              // actually renders while offline.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={`https://i.ytimg.com/vi/${video.videoId ?? video.id}/mqdefault.jpg`}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            )}
-          </div>
-          <div className="flex flex-1 flex-col gap-1.5 p-3.5">
-            <h3 className="line-clamp-2 font-display text-[14px] leading-snug font-semibold text-qw-fg-1">
-              {video.title}
-            </h3>
-            <div className="text-xs text-qw-muted-1">{video.videoChannelTitle}</div>
-          </div>
-        </button>
+        <OfflineVideoCard key={video.id} video={video} onSelect={onSelect} />
       ))}
     </div>
+  )
+}
+
+// Deliberately a separate, simplified component rather than the real
+// VideoCard: that one is wired up for drag-and-drop reordering and the
+// mark-read/category/archive server actions, none of which make sense
+// against a locally-stored, read-only snapshot. Styled to match it,
+// though, so this looks like the same app rather than a stripped-down
+// fallback.
+function OfflineVideoCard({
+  video,
+  onSelect,
+}: {
+  video: OfflineVideo
+  onSelect: (id: number) => void
+}) {
+  const localThumbnail = useLocalThumbnail(video.id)
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(video.id)}
+      className="flex flex-col overflow-hidden rounded-lg border border-qw-border bg-qw-surface-1 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-[transform,border-color,box-shadow] duration-300 ease-qw hover:-translate-y-1 hover:border-qw-border-strong hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_32px_rgba(0,0,0,0.4),0_0_24px_rgba(91,179,255,0.12)]"
+    >
+      <div className="relative aspect-video w-full overflow-hidden bg-[linear-gradient(135deg,#131B2E_0%,#0D1220_60%,#1C2B44_100%)]">
+        {localThumbnail && (
+          // Local blob (see use-local-thumbnail.ts) — always what's shown
+          // here, since anything in this list has already been synced.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={localThumbnail} alt="" className="h-full w-full object-cover" />
+        )}
+        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(7,9,15,0.02)_0%,rgba(7,9,15,0)_40%,rgba(7,9,15,0.55)_100%)]" />
+      </div>
+      <div className="flex flex-1 flex-col gap-1.5 p-3.5">
+        <h3 className="line-clamp-2 font-display text-[14px] leading-snug font-semibold text-qw-fg-1">
+          {video.title}
+        </h3>
+        <div className="text-xs text-qw-muted-1">
+          {video.videoChannelTitle}
+          {video.videoPublished && <> · {formatPublishedDate(video.videoPublished)}</>}
+        </div>
+      </div>
+    </button>
   )
 }
 
@@ -150,6 +169,8 @@ function OfflineArticle({
   video: OfflineVideo
   onBack: () => void
 }) {
+  const localThumbnail = useLocalThumbnail(video.id)
+
   return (
     <article>
       <button
@@ -159,6 +180,15 @@ function OfflineArticle({
       >
         Back to saved videos
       </button>
+
+      {localThumbnail && (
+        <div
+          className="relative -mx-6 mb-6 flex min-h-[220px] items-end overflow-hidden bg-qw-surface-2 bg-cover bg-center sm:rounded-lg"
+          style={{ backgroundImage: `url(${localThumbnail})` }}
+        >
+          <div className="absolute inset-0 bg-[linear-gradient(to_top,#07090F_0%,rgba(7,9,15,0.6)_55%,rgba(7,9,15,0.15)_100%)]" />
+        </div>
+      )}
 
       <h1 className="mb-3 font-display text-[28px] leading-tight font-semibold text-qw-fg-1">
         {video.title || 'Untitled video'}
@@ -215,6 +245,14 @@ function OfflineSummaryLine({ line }: { line: string }) {
   }
 
   return <p className="mb-3.5 text-[1em] leading-[1.75] text-qw-fg-2">{trimmed}</p>
+}
+
+function formatPublishedDate(date: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(date))
 }
 
 function formatSyncedAt(timestamp: number) {
