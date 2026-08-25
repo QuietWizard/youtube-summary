@@ -15,6 +15,18 @@ const SYNC_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
 // failed sync just leaves the local copy at its last-known state.
 export function useBackgroundSync() {
   useEffect(() => {
+    // Best-effort request for the browser to stop treating this origin's
+    // storage as evictable under disk pressure. Without this, a browser
+    // can (and periodically does, on both Chrome/Android and iOS Safari)
+    // clear IndexedDB for low-engagement origins to reclaim space — which
+    // would silently undo the whole point of downloading this data in the
+    // first place. Whether it's actually granted depends on browser
+    // heuristics (install state, engagement); nothing here depends on it
+    // succeeding.
+    navigator.storage?.persist?.().catch(() => {})
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
 
     async function sync() {
