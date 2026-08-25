@@ -48,7 +48,13 @@ export function useBackgroundSync() {
         if (cancelled) {
           return
         }
-        await flushMutationQueue()
+
+        const { idsNeedingThumbnail } = await syncVideoList(videos)
+        if (cancelled || idsNeedingThumbnail.length === 0) {
+          return
+        }
+
+        await syncThumbnails(videos, idsNeedingThumbnail)
       } catch {
         // Best-effort — the local cache just stays at its last-known state.
       }
