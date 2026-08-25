@@ -1,28 +1,30 @@
-// Minimal, hand-written service worker: it only does three jobs.
+// Minimal, hand-written service worker: it only does two jobs now.
 //
-// 1. Cache YouTube thumbnails (cache-first, refreshed in the background) so
-//    saved artwork still renders with no connection.
-// 2. Cache Next's built JS/CSS chunks (/_next/static/...) as they're
+// 1. Cache Next's built JS/CSS chunks (/_next/static/...) as they're
 //    fetched during normal browsing. These are content-hashed and
 //    immutable, so cache-first with no revalidation is always correct.
 //    This is what lets /offline's own chunk survive being served with no
 //    network — offline-indicator.tsx prefetches that route on mount so its
 //    chunk gets requested (and so cached here) before the connection drops.
-// 3. When a page navigation fails outright (no network), serve the
+// 2. When a page navigation fails outright (no network), serve the
 //    precached /offline shell instead of the browser's default error page.
+//
+// It used to also cache-first YouTube thumbnails, but that's redundant now
+// that thumbnails are downloaded once and kept in IndexedDB as blobs (see
+// db.ts and use-local-thumbnail.ts) rather than relied on as evictable HTTP
+// cache entries — one persistence layer for images is enough.
 //
 // It deliberately does NOT try to cache Next's HTML/RSC responses
 // themselves — those are tied to a build id and Next's internal fetch
 // protocol, a poor fit for a hand-rolled cache. Reading offline is handled
 // instead by /offline, a plain client-rendered page backed by the IndexedDB
 // copy kept in sync by use-background-sync.ts.
-const CACHE_VERSION = 'v2'
+const CACHE_VERSION = 'v3'
 const SHELL_CACHE = `qw-shell-${CACHE_VERSION}`
-const THUMBNAIL_CACHE = `qw-thumbnails-${CACHE_VERSION}`
 const STATIC_CACHE = `qw-static-${CACHE_VERSION}`
 const OFFLINE_URL = '/offline'
 const SHELL_ASSETS = [OFFLINE_URL, '/icon-192.png', '/icon-512.png']
-const CURRENT_CACHES = [SHELL_CACHE, THUMBNAIL_CACHE, STATIC_CACHE]
+const CURRENT_CACHES = [SHELL_CACHE, STATIC_CACHE]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -49,11 +51,6 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
-
-  if (url.hostname === 'i.ytimg.com') {
-    event.respondWith(cacheFirstWithRevalidate(request))
-    return
-  }
 
   if (url.origin === self.location.origin && url.pathname.startsWith('/_next/static/')) {
     event.respondWith(cacheFirstImmutable(request))
@@ -83,20 +80,4 @@ async function cacheFirstImmutable(request) {
   } catch {
     return Response.error()
   }
-}
-
-async function cacheFirstWithRevalidate(request) {
-  const cache = await caches.open(THUMBNAIL_CACHE)
-  const cached = await cache.match(request)
-
-  const network = fetch(request)
-    .then((response) => {
-      if (response.ok) {
-        cache.put(request, response.clone())
-      }
-      return response
-    })
-    .catch(() => undefined)
-
-  return cached || (await network) || Response.error()
 }
