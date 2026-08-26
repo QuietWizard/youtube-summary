@@ -168,23 +168,53 @@ export async function getOfflineVideoById(id: number): Promise<OfflineVideo | un
   return db.get(STORE_VIDEOS, id)
 }
 
-// Writes a field-level edit straight into the local copy of a video — the
-// "apply instantly" half of the local-first mutation path in
-// apply-local-mutation.ts. A no-op if the video isn't in the local store
-// for some reason (shouldn't normally happen: mutations are only offered
-// on videos already loaded from it).
-export async function updateLocalVideoField(
+// One video's writes must happen one at a time: this is a read-modify-write
+// (read the current row, patch one field, put the whole row back), and two
+// of those for the *same* video overlapping — e.g. archiving, which sets
+// `archived` and `read` as two separate calls — would otherwise race. The
+// second call's read can land before the first call's write commits, so its
+// put overwrites the row with a stale copy that's missing the first call's
+// change. Chaining each video's writes onto the previous one (regardless of
+// which field, or which call site) serializes them without needing every
+// caller to know about every other caller.
+const pendingWritesByVideoId = new Map<number, Promise<void>>()
+
+// Writes one or more field-level edits straight into the local copy of a
+// video in a single read-modify-write — the "apply instantly" half of the
+// local-first mutation path in apply-local-mutation.ts. A no-op if the
+// video isn't in the local store for some reason (shouldn't normally
+// happen: mutations are only offered on videos already loaded from it).
+export function updateLocalVideoFields(
+  videoId: number,
+  fields: Partial<Record<MutationField, boolean | string>>
+): Promise<void> {
+  const previous = pendingWritesByVideoId.get(videoId) ?? Promise.resolve()
+
+  const next = previous.then(async () => {
+    const db = await getDb()
+    if (!db) return
+
+    const video = await db.get(STORE_VIDEOS, videoId)
+    if (!video) return
+
+    await db.put(STORE_VIDEOS, { ...video, ...fields } as OfflineVideo)
+  })
+
+  // Never let one failed write jam the queue for this video forever.
+  pendingWritesByVideoId.set(
+    videoId,
+    next.catch(() => {})
+  )
+
+  return next
+}
+
+export function updateLocalVideoField(
   videoId: number,
   field: MutationField,
   value: boolean | string
-) {
-  const db = await getDb()
-  if (!db) return
-
-  const video = await db.get(STORE_VIDEOS, videoId)
-  if (!video) return
-
-  await db.put(STORE_VIDEOS, { ...video, [field]: value } as OfflineVideo)
+): Promise<void> {
+  return updateLocalVideoFields(videoId, { [field]: value })
 }
 
 // Mirrors the lookup order used server-side in video/[id]/page.tsx: the

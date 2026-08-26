@@ -9,7 +9,7 @@ import { useVideoSync } from '@/app/video-sync-context'
 import { useOptimisticMutation } from '@/utils/use-optimistic-mutation'
 import { useToast } from '@/components/ui/toast-provider'
 import { computeNavCountsAdjustment, negateAdjustment } from '@/utils/video-view-filter'
-import { applyLocalMutation } from '@/utils/offline/apply-local-mutation'
+import { applyLocalMutation, applyArchiveMutation } from '@/utils/offline/apply-local-mutation'
 import { requestOpenReader } from '@/utils/offline/open-reader'
 
 type ActionBarProps = {
@@ -148,8 +148,7 @@ export default function ActionBar({
     // after router.push) reads this synchronously, which is what makes the
     // item actually disappear instead of waiting for a manual refresh.
     setPendingChange(videoId, { archived: true, read: true })
-    applyLocalMutation(videoId, 'archived', true)
-    applyLocalMutation(videoId, 'read', true)
+    applyArchiveMutation(videoId, true)
 
     if (onClose) {
       // Overlay mode: closing is local state, not a navigation — always

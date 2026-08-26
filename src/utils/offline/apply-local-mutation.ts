@@ -1,6 +1,6 @@
 'use client'
 
-import { enqueueMutation, updateLocalVideoField } from './db'
+import { enqueueMutation, updateLocalVideoField, updateLocalVideoFields } from './db'
 import type { MutationField } from './db'
 import { flushMutationQueue } from './sync-mutations'
 
@@ -20,5 +20,18 @@ export async function applyLocalMutation(
 ) {
   await updateLocalVideoField(videoId, field, value)
   await enqueueMutation(videoId, field, value)
+  void flushMutationQueue()
+}
+
+// Archiving sets both `archived` and `read` locally, but only `archived`
+// needs to be queued for push: the server's archiveVideo/unarchiveVideo
+// actions (see actions.ts) already set both fields in one update, so
+// queuing `read` too would just be a second, redundant round trip.
+export async function applyArchiveMutation(videoId: number, archived: boolean) {
+  await updateLocalVideoFields(
+    videoId,
+    archived ? { archived: true, read: true } : { archived: false }
+  )
+  await enqueueMutation(videoId, 'archived', archived)
   void flushMutationQueue()
 }
