@@ -228,15 +228,32 @@ export default function VideosClient({
     setTotalCount(sourceTotalCount - pendingRemovedCount)
   }, [sourceItems, sourceTotalCount])
 
-  // Moves the feed to a new view without a server round trip: pushes the
+  // Moves the feed to a new view without a server round trip: updates the
   // real URL (so the address bar and back button behave correctly) and
   // updates local state directly. Used for every in-app way of changing the
   // feed's view — pagination, search, page size, and (via the click-guard
   // in offline-indicator.tsx forwarding here) sidebar category links —
   // whenever the local cache can serve the result. Never used for the
   // archived view, which always stays a real navigation.
-  const navigateTo = useCallback((nextView: FeedView, href: string) => {
-    window.history.pushState({}, '', href)
+  //
+  // `replace: true` (used while the user is actively typing a search) edits
+  // the current history entry instead of adding a new one, so back/forward
+  // skips over individual keystrokes and lands on whatever the URL was
+  // before the search started.
+  //
+  // A real navigation always starts scrolled at the top; a view swapped in
+  // place doesn't get that for free, so it's done explicitly here — but
+  // only for these forward-going moves. Browser back/forward (see the
+  // popstate handler below) intentionally skips it, since that's the one
+  // case where staying where you were is closer to what a real navigation
+  // would already do.
+  const navigateTo = useCallback((nextView: FeedView, href: string, options?: { replace?: boolean }) => {
+    if (options?.replace) {
+      window.history.replaceState({}, '', href)
+    } else {
+      window.history.pushState({}, '', href)
+    }
+    window.scrollTo(0, 0)
     setView(nextView)
   }, [])
 
@@ -380,16 +397,24 @@ export default function VideosClient({
 
     if (searchDebounceRef.current) {
       clearTimeout(searchDebounceRef.current)
+      searchDebounceRef.current = null
+    }
+
+    // Local search is just filtering an in-memory array — there's no
+    // request to debounce against, so every keystroke can filter instantly.
+    // The debounce below only still applies to the server-query fallback
+    // (local cache not synced yet), where each keystroke really would
+    // otherwise fire its own query.
+    if (canBrowseLocally) {
+      const nextSearchTerm = value.trim() || null
+      const href = buildPageHref(view.categoryParam, view.showArchived, 1, view.pageSize, nextSearchTerm)
+      navigateTo({ ...view, page: 1, searchTerm: nextSearchTerm }, href, { replace: true })
+      return
     }
 
     searchDebounceRef.current = setTimeout(() => {
       const nextSearchTerm = value.trim() || null
       const href = buildPageHref(view.categoryParam, view.showArchived, 1, view.pageSize, nextSearchTerm)
-
-      if (canBrowseLocally) {
-        navigateTo({ ...view, page: 1, searchTerm: nextSearchTerm }, href)
-        return
-      }
 
       if (!navigator.onLine) {
         return
