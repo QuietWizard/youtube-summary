@@ -179,15 +179,14 @@ export async function getOfflineVideoById(id: number): Promise<OfflineVideo | un
 // caller to know about every other caller.
 const pendingWritesByVideoId = new Map<number, Promise<void>>()
 
-// Writes a field-level edit straight into the local copy of a video — the
-// "apply instantly" half of the local-first mutation path in
-// apply-local-mutation.ts. A no-op if the video isn't in the local store
-// for some reason (shouldn't normally happen: mutations are only offered
-// on videos already loaded from it).
-export function updateLocalVideoField(
+// Writes one or more field-level edits straight into the local copy of a
+// video in a single read-modify-write — the "apply instantly" half of the
+// local-first mutation path in apply-local-mutation.ts. A no-op if the
+// video isn't in the local store for some reason (shouldn't normally
+// happen: mutations are only offered on videos already loaded from it).
+export function updateLocalVideoFields(
   videoId: number,
-  field: MutationField,
-  value: boolean | string
+  fields: Partial<Record<MutationField, boolean | string>>
 ): Promise<void> {
   const previous = pendingWritesByVideoId.get(videoId) ?? Promise.resolve()
 
@@ -198,7 +197,7 @@ export function updateLocalVideoField(
     const video = await db.get(STORE_VIDEOS, videoId)
     if (!video) return
 
-    await db.put(STORE_VIDEOS, { ...video, [field]: value } as OfflineVideo)
+    await db.put(STORE_VIDEOS, { ...video, ...fields } as OfflineVideo)
   })
 
   // Never let one failed write jam the queue for this video forever.
@@ -208,6 +207,14 @@ export function updateLocalVideoField(
   )
 
   return next
+}
+
+export function updateLocalVideoField(
+  videoId: number,
+  field: MutationField,
+  value: boolean | string
+): Promise<void> {
+  return updateLocalVideoFields(videoId, { [field]: value })
 }
 
 // Mirrors the lookup order used server-side in video/[id]/page.tsx: the

@@ -6,7 +6,7 @@ import { useState } from 'react'
 import type { DragEvent, ReactNode } from 'react'
 import { useVideoSync } from './video-sync-context'
 import { VIDEO_DRAG_MIME_TYPE } from './video-drag'
-import { applyLocalMutation } from '@/utils/offline/apply-local-mutation'
+import { applyLocalMutation, applyArchiveMutation } from '@/utils/offline/apply-local-mutation'
 
 type SidebarContentProps = {
   userEmail: string | null
@@ -53,8 +53,7 @@ export default function SidebarContent({
 
     applyListChange(videoId, { archived: true, read: true })
     commitListChange(videoId)
-    applyLocalMutation(videoId, 'archived', true)
-    applyLocalMutation(videoId, 'read', true)
+    applyArchiveMutation(videoId, true)
   }
 
   return (

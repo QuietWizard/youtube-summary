@@ -15,7 +15,7 @@ import {
   sumAdjustments,
 } from '@/utils/video-view-filter'
 import type { NavCountsAdjustment, VideoView } from '@/utils/video-view-filter'
-import { applyLocalMutation } from '@/utils/offline/apply-local-mutation'
+import { applyLocalMutation, applyArchiveMutation } from '@/utils/offline/apply-local-mutation'
 import { useLocalVideos } from './local-videos-context'
 import { computeLocalFeed } from '@/utils/offline/local-feed'
 import { subscribeToFeedNavigationRequests } from '@/utils/offline/feed-navigation'
@@ -351,10 +351,7 @@ export default function VideosClient({
 
       applyChange(id, change)
       commitChange(id)
-      applyLocalMutation(id, 'archived', nextArchived)
-      if (nextArchived) {
-        applyLocalMutation(id, 'read', true)
-      }
+      applyArchiveMutation(id, nextArchived)
     },
     [getItem, applyChange, commitChange]
   )
