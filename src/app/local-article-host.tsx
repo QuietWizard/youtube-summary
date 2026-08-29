@@ -68,8 +68,15 @@ export default function LocalArticleHost() {
       // is left alone, matching the feed's own back/forward behavior
       // (videos-client.tsx), which defers to the browser's native
       // scroll-position restoration there instead of forcing one.
+      //
+      // Deferred a frame: on a real popstate (unlike the fresh pushState in
+      // the open handler above), the browser applies its own remembered
+      // scroll position for the entry being restored — and it does that
+      // asynchronously, so a synchronous scrollTo here just gets
+      // overwritten immediately after. Waiting a frame lets that native
+      // restoration happen first, so this one lands last and wins.
       if (next) {
-        window.scrollTo(0, 0)
+        requestAnimationFrame(() => window.scrollTo(0, 0))
       }
     }
 
