@@ -19,6 +19,7 @@ export type OfflineVideo = {
   videoChannelId: string | null
   videoChannelTitle: string | null
   summary: string | null
+  article: string | null
   read: boolean | null
   videoPublished: string | null
   category: string | null

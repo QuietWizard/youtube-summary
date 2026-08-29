@@ -13,4 +13,6 @@ export type Video = {
   category: string | null;
   updated_at: string;
   field_updated_at: Partial<Record<'read' | 'archived' | 'category', string>>;
+  article: string | null;
+  transcript: string | null;
 }

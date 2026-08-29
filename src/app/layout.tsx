@@ -28,10 +28,10 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "YouTube Summary",
-  description: "AI-generated summaries of your saved YouTube videos.",
+  title: "Michael's Video Articles",
+  description: "AI-generated articles from your saved YouTube videos.",
   appleWebApp: {
-    title: "Video Summaries",
+    title: "Video Articles",
     statusBarStyle: "black-translucent",
   },
 };

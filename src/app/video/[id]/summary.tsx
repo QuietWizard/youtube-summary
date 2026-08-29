@@ -3,33 +3,36 @@
 import { useFontSize } from './font-size-context'
 
 type SummaryProps = {
-  summary: string | null
+  body: string | null
+  emptyMessage?: string
 }
 
-export default function Summary({ summary }: SummaryProps) {
+export default function Summary({ body, emptyMessage }: SummaryProps) {
   const { scale } = useFontSize()
 
-  return <SummaryContent summary={summary} scale={scale} />
+  return <SummaryContent body={body} scale={scale} emptyMessage={emptyMessage} />
 }
 
 function SummaryContent({
-  summary,
+  body,
   scale,
+  emptyMessage = 'No summary is available for this article.',
 }: {
-  summary: string | null
+  body: string | null
   scale: number
+  emptyMessage?: string
 }) {
-  if (!summary) {
+  if (!body) {
     return (
       <p className="font-body text-qw-muted-1">
-        No summary is available for this video.
+        {emptyMessage}
       </p>
     )
   }
 
   return (
     <div className="font-body text-qw-fg-2" style={{ fontSize: `${scale}%` }}>
-      {summary.split('\n').map((line, index) => (
+      {body.split('\n').map((line, index) => (
         <SummaryLine key={`${index}-${line}`} line={line} />
       ))}
     </div>

@@ -152,7 +152,7 @@ function AppShellContent({
             className="size-6 shrink-0 object-contain"
           />
           <div className="truncate font-display text-[15px] font-semibold text-qw-fg-1">
-            Video Summaries
+            Michael&apos;s Video Articles
           </div>
         </div>
       </div>

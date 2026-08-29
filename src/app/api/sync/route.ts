@@ -14,7 +14,7 @@ import { getCurrentUser } from '@/utils/supabase/get-current-user'
 // applied if the field it touches hasn't been changed server-side more
 // recently than the local edit's own timestamp.
 const SYNC_FIELDS =
-  'id, videoId, title, thumbnail, videoChannelId, videoChannelTitle, summary, read, videoPublished, category, created_at, field_updated_at'
+  'id, videoId, title, thumbnail, videoChannelId, videoChannelTitle, summary, article, read, videoPublished, category, created_at, field_updated_at'
 
 export async function GET() {
   const user = await getCurrentUser()

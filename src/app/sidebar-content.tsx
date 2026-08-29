@@ -69,7 +69,7 @@ export default function SidebarContent({
           />
           <div>
             <div className="font-display text-sm leading-tight font-semibold text-qw-fg-1">
-              Video Summaries
+              Michael&apos;s Video Articles
             </div>
             <div className="mt-0.5 text-[9px] font-bold tracking-[0.2em] text-qw-muted-3 uppercase">
               QuietWizard Codex
@@ -155,7 +155,7 @@ export default function SidebarContent({
           onNavigate={onNavigate}
           icon={<GridIcon />}
         >
-          All Videos
+          All Articles
         </NavLink>
       </nav>
 

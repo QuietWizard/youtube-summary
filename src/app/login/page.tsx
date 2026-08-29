@@ -18,10 +18,10 @@ export default function Login() {  const handleGoogleLogin = async () => {
       <div className="flex flex-col items-center gap-8 p-8 max-w-md">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-zinc-900 dark:text-zinc-50 mb-2">
-            YouTube Summary
+            Michael&apos;s Video Articles
           </h1>
           <p className="text-zinc-600 dark:text-zinc-400">
-            Sign in to access your videos
+            Sign in to access your articles
           </p>
         </div>
 

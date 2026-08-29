@@ -9,6 +9,9 @@ import VideoHero from './video/[id]/video-hero'
 import { ArticleContent, normalizeCategory } from './video/[id]/article-content'
 import { FontSizeProvider } from './video/[id]/font-size-context'
 import { FONT_SIZE_COOKIE, DEFAULT_FONT_SCALE, MIN_FONT_SCALE, MAX_FONT_SCALE } from './video/[id]/font-size-cookie'
+import type { OfflineVideo } from '@/utils/offline/db'
+
+type OpenState = { id: number; variant: 'summary' | 'article' } | null
 
 // The instant path into an article: opened by the click-guard in
 // offline-indicator.tsx when a clicked video already exists in local
@@ -16,40 +19,53 @@ import { FONT_SIZE_COOKIE, DEFAULT_FONT_SCALE, MIN_FONT_SCALE, MAX_FONT_SCALE } 
 // trip) to show it. Full interactive fidelity — the same ActionBar users
 // get from a real page load, not the simplified read-only view
 // offline-reader.tsx falls back to when a video *isn't* available locally.
+//
+// Handles both drill-down levels (article summary, full article) as one
+// overlay rather than two: each open pushes its own history entry, and
+// popstate re-derives which (if either) applies from the URL — the same
+// "URL is the source of truth" pattern videos-client.tsx uses for feed
+// navigation — so back/forward walks summary → article → feed correctly
+// without this component needing to track a manual stack.
 export default function LocalArticleHost() {
-  const { getLocalVideoById } = useLocalVideos()
+  const { getLocalVideoById, getLocalVideoByKey } = useLocalVideos()
   const { categories } = useVideoSync()
-  const [openId, setOpenId] = useState<number | null>(null)
+  const [open, setOpen] = useState<OpenState>(null)
 
   useEffect(() => {
-    return subscribeToOpenArticleRequests(({ id, href }) => {
-      setOpenId(id)
-      window.history.pushState({ localArticle: id }, '', href)
+    return subscribeToOpenArticleRequests(({ id, href, variant }) => {
+      window.history.pushState({ localArticle: id, variant }, '', href)
+      setOpen({ id, variant })
     })
   }, [])
 
   // Covers both a user pressing the physical/browser back button and our
-  // own close() below calling history.back() — either way, a popstate
-  // means the address bar just moved away from this article, so the
-  // overlay should follow.
+  // own close() below calling history.back() — either way, re-derive
+  // what (if anything) the address bar now points at.
   useEffect(() => {
     function handlePopState() {
-      setOpenId(null)
+      setOpen(deriveOpenStateFromLocation(getLocalVideoByKey))
     }
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const video = openId != null ? getLocalVideoById(openId) : undefined
+  const video = open != null ? getLocalVideoById(open.id) : undefined
 
-  if (!video) {
+  if (!video || !open) {
     return null
   }
 
   function close() {
     window.history.back()
   }
+
+  const videoKey = video.videoId || String(video.id)
+  const isSummary = open.variant === 'summary'
+  const fullArticleHref = isSummary && video.article
+    ? `/video/${videoKey}/article?from=${encodeURIComponent(window.location.pathname + window.location.search)}`
+    : null
 
   return (
     <div className="fixed inset-0 z-[95] overflow-y-auto bg-qw-bg">
@@ -72,13 +88,35 @@ export default function LocalArticleHost() {
               videoChannelId={video.videoChannelId}
               videoChannelTitle={video.videoChannelTitle}
               videoPublished={video.videoPublished}
-              summary={video.summary}
+              body={isSummary ? video.summary : video.article}
+              emptyMessage={isSummary ? undefined : 'No article text is available yet.'}
+              fullArticleHref={fullArticleHref}
             />
           </FontSizeProvider>
         </article>
       </div>
     </div>
   )
+}
+
+function deriveOpenStateFromLocation(
+  getLocalVideoByKey: (key: string) => OfflineVideo | undefined
+): OpenState {
+  const pathname = window.location.pathname
+
+  const articleMatch = pathname.match(/^\/video\/([^/]+)\/article$/)
+  if (articleMatch) {
+    const video = getLocalVideoByKey(decodeURIComponent(articleMatch[1]))
+    return video ? { id: video.id, variant: 'article' } : null
+  }
+
+  const summaryMatch = pathname.match(/^\/video\/([^/]+)$/)
+  if (summaryMatch) {
+    const video = getLocalVideoByKey(decodeURIComponent(summaryMatch[1]))
+    return video ? { id: video.id, variant: 'summary' } : null
+  }
+
+  return null
 }
 
 function readFontScaleCookie(): number {
