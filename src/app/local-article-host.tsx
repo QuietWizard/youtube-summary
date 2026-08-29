@@ -9,6 +9,7 @@ import VideoHero from './video/[id]/video-hero'
 import { ArticleContent, normalizeCategory } from './video/[id]/article-content'
 import { FontSizeProvider } from './video/[id]/font-size-context'
 import { FONT_SIZE_COOKIE, DEFAULT_FONT_SCALE, MIN_FONT_SCALE, MAX_FONT_SCALE } from './video/[id]/font-size-cookie'
+import { useLockBodyScroll } from '@/utils/use-lock-body-scroll'
 import type { OfflineVideo } from '@/utils/offline/db'
 
 type OpenState = { id: number; variant: 'summary' | 'article' } | null
@@ -31,6 +32,7 @@ export default function LocalArticleHost() {
   const { categories } = useVideoSync()
   const [open, setOpen] = useState<OpenState>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  useLockBodyScroll(open != null)
 
   // The popstate handler below is only ever attached once (on mount), so a
   // plain closure over getLocalVideoByKey would be stuck forever on

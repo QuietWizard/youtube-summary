@@ -12,6 +12,7 @@ import LocalArticleHost from './local-article-host'
 import { VideoSyncProvider } from './video-sync-context'
 import { LocalVideosProvider } from './local-videos-context'
 import { ToastProvider } from '@/components/ui/toast-provider'
+import { useLockBodyScroll } from '@/utils/use-lock-body-scroll'
 import type { CategoryNavItem } from './layout'
 import { NAV_COLLAPSED_COOKIE } from './nav-cookie'
 
@@ -116,6 +117,8 @@ function AppShellContent({
   handleSignOut: () => void
   children: ReactNode
 }) {
+  useLockBodyScroll(isMobileMenuOpen)
+
   return (
     <div className="relative min-h-screen bg-qw-bg font-ui">
       <OfflineIndicator />
