@@ -45,6 +45,14 @@ export default function LocalArticleHost() {
     return subscribeToOpenArticleRequests(({ id, href, variant }) => {
       window.history.pushState({ localArticle: id, variant }, '', href)
       setOpen({ id, variant })
+      // Each open is a full content swap (a different video, or the same
+      // video's summary vs. its full article) — without this, the new
+      // content inherits whatever scroll position the click happened at,
+      // which for "Read Full Article" (a button near the bottom of the
+      // summary) means opening already scrolled partway down, making a
+      // genuinely different document look like a continuation of the one
+      // just left.
+      window.scrollTo(0, 0)
     })
   }, [])
 
@@ -53,7 +61,16 @@ export default function LocalArticleHost() {
   // what (if anything) the address bar now points at.
   useEffect(() => {
     function handlePopState() {
-      setOpen(deriveOpenStateFromLocation(getLocalVideoByKeyRef.current))
+      const next = deriveOpenStateFromLocation(getLocalVideoByKeyRef.current)
+      setOpen(next)
+      // Same reasoning as the open handler above — but only when landing on
+      // another overlay variant. Popping all the way back to the bare feed
+      // is left alone, matching the feed's own back/forward behavior
+      // (videos-client.tsx), which defers to the browser's native
+      // scroll-position restoration there instead of forcing one.
+      if (next) {
+        window.scrollTo(0, 0)
+      }
     }
 
     window.addEventListener('popstate', handlePopState)
