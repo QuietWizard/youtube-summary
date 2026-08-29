@@ -71,11 +71,11 @@ export default function OfflineIndicator() {
 
   // Three things happen here for any same-origin link click, in order:
   //
-  // 1. If it points at a specific video's article and that video is
-  //    already synced locally, open it instantly instead of navigating —
-  //    online or offline, since there's no reason to wait on (or risk) a
-  //    server round trip for something already sitting in IndexedDB. See
-  //    local-article-host.tsx.
+  // 1. If it points at a specific video's article summary or full article
+  //    and that content is already synced locally, open it instantly
+  //    instead of navigating — online or offline, since there's no reason
+  //    to wait on (or risk) a server round trip for something already
+  //    sitting in IndexedDB. See local-article-host.tsx.
   // 2. If it points at the feed itself ("/") for a non-archived view, and
   //    the local cache has ever synced, switch views locally instead of
   //    navigating — the whole unarchived catalog already lives in
@@ -122,12 +122,22 @@ export default function OfflineIndicator() {
         return
       }
 
-      const videoMatch = url.pathname.match(/^\/video\/([^/]+)$/)
-      if (videoMatch) {
-        const localVideo = getLocalVideoByKey(decodeURIComponent(videoMatch[1]))
+      const fullArticleMatch = url.pathname.match(/^\/video\/([^/]+)\/article$/)
+      if (fullArticleMatch) {
+        const localVideo = getLocalVideoByKey(decodeURIComponent(fullArticleMatch[1]))
+        if (localVideo?.article) {
+          event.preventDefault()
+          requestOpenArticle({ id: localVideo.id, href, variant: 'article' })
+          return
+        }
+      }
+
+      const summaryMatch = url.pathname.match(/^\/video\/([^/]+)$/)
+      if (summaryMatch) {
+        const localVideo = getLocalVideoByKey(decodeURIComponent(summaryMatch[1]))
         if (localVideo) {
           event.preventDefault()
-          requestOpenArticle({ id: localVideo.id, href })
+          requestOpenArticle({ id: localVideo.id, href, variant: 'summary' })
           return
         }
       }
@@ -160,7 +170,7 @@ export default function OfflineIndicator() {
             onClick={() => setIsReaderOpen(true)}
             className="underline underline-offset-2"
           >
-            Read saved videos
+            Read saved articles
           </button>
         </div>
       ) : (

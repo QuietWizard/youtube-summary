@@ -7,20 +7,29 @@ type ArticleContentProps = {
   videoChannelId: string | null
   videoChannelTitle: string | null
   videoPublished: string | null
-  summary: string | null
+  body: string | null
+  emptyMessage?: string
+  // Set only on the article-summary page, and only when a full article
+  // exists for this video — renders a link down to the full-article route.
+  // The full-article page itself passes nothing here, since there's
+  // nowhere further to drill into.
+  fullArticleHref?: string | null
 }
 
-// Shared between the server-rendered video/[id]/page.tsx and the client-
-// rendered local-article-host.tsx (opened instantly from local storage
-// when a video's already been synced) so the two render identically
-// rather than risking drift between two hand-maintained copies.
+// Shared between the server-rendered video/[id]/page.tsx and
+// video/[id]/article/page.tsx, and the client-rendered local-article-host.tsx
+// (opened instantly from local storage when a video's already been synced)
+// so all three render identically rather than risking drift between
+// hand-maintained copies.
 export function ArticleContent({
   title,
   videoId,
   videoChannelId,
   videoChannelTitle,
   videoPublished,
-  summary,
+  body,
+  emptyMessage,
+  fullArticleHref,
 }: ArticleContentProps) {
   return (
     <>
@@ -52,7 +61,7 @@ export function ArticleContent({
       </div>
 
       <h1 className="mb-3 max-w-[720px] font-display text-[34px] leading-tight font-semibold text-qw-fg-1">
-        {title || 'Untitled video'}
+        {title || 'Untitled article'}
       </h1>
       <p className="mb-7 text-[15px] font-medium text-qw-fg-2">
         <Link href={`https://www.youtube.com/channel/${videoChannelId}`}>
@@ -62,7 +71,29 @@ export function ArticleContent({
 
       <hr className="mb-7 border-qw-border" />
 
-      <Summary summary={summary} />
+      <Summary body={body} emptyMessage={emptyMessage} />
+
+      {fullArticleHref && (
+        <Link
+          href={fullArticleHref}
+          className="mt-8 flex h-11 items-center justify-center gap-2 rounded-md border border-qw-border-strong bg-qw-surface-1 px-4 text-[14px] font-semibold text-qw-fg-1 transition-colors hover:bg-qw-surface-2"
+        >
+          Read Full Article
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <polyline points="12 5 19 12 12 19" />
+          </svg>
+        </Link>
+      )}
     </>
   )
 }

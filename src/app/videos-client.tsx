@@ -447,7 +447,7 @@ export default function VideosClient({
   const sectionTitle = view.showArchived
     ? 'Archived'
     : view.showAll
-      ? 'All Videos'
+      ? 'All Articles'
       : isUncategorizedView
         ? 'Uncategorized'
         : view.selectedCategory
@@ -471,7 +471,7 @@ export default function VideosClient({
             </h1>
           )}
           <div className="mt-1.5 text-[13px] text-qw-muted-2">
-            {totalCount} video{totalCount === 1 ? '' : 's'}
+            {totalCount} article{totalCount === 1 ? '' : 's'}
           </div>
         </div>
         <div className="flex h-[42px] w-[280px] max-w-full items-center gap-2.5 rounded-md border border-qw-border bg-qw-surface-1 px-3">
@@ -502,10 +502,10 @@ export default function VideosClient({
         <div className="rounded-lg border border-dashed border-qw-border px-6 py-20 text-center">
           <p className="text-sm text-qw-muted-1">
             {view.showArchived
-              ? 'No archived videos found.'
+              ? 'No archived articles found.'
               : view.searchTerm
-                ? 'No videos match your search.'
-                : 'No videos found in this category.'}
+                ? 'No articles match your search.'
+                : 'No articles found in this category.'}
           </p>
         </div>
       ) : (

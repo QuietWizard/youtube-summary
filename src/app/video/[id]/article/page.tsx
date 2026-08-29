@@ -2,14 +2,21 @@ import { cookies } from 'next/headers'
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUser } from '@/utils/supabase/get-current-user'
 import { getCategories } from '@/utils/get-categories'
-import ActionBar from './action-bar'
-import VideoHero from './video-hero'
-import { ArticleContent, normalizeCategory } from './article-content'
-import { FontSizeProvider } from './font-size-context'
-import { getVideoByUrlId, isSafeRedirectTarget } from './get-video-by-url-id'
-import { FONT_SIZE_COOKIE, parseFontScale } from './font-size-cookie'
+import ActionBar from '../action-bar'
+import VideoHero from '../video-hero'
+import { ArticleContent, normalizeCategory } from '../article-content'
+import { FontSizeProvider } from '../font-size-context'
+import { getVideoByUrlId, isSafeRedirectTarget } from '../get-video-by-url-id'
+import { FONT_SIZE_COOKIE, parseFontScale } from '../font-size-cookie'
 
-export default async function VideoDetailPage({
+// The full-article view one level below the article-summary page at
+// video/[id] — "Back" here returns to that summary page (via `from`,
+// which the summary page set to its own URL), not all the way to the
+// feed. Redirects to the summary page for a video with no full article,
+// since the "Read Full Article" link is only ever shown when one exists —
+// reaching this route without one means a stale link, not a real state to
+// render.
+export default async function FullArticlePage({
   params,
   searchParams,
 }: {
@@ -18,8 +25,7 @@ export default async function VideoDetailPage({
 }) {
   const { id } = await params
   const { from } = await searchParams
-  const backHref = isSafeRedirectTarget(from) ? from : '/'
-  const selfHref = `/video/${id}${backHref !== '/' ? `?from=${encodeURIComponent(backHref)}` : ''}`
+  const backHref = isSafeRedirectTarget(from) ? from : `/video/${id}`
   const user = await getCurrentUser()
   const cookieStore = await cookies()
   const initialFontScale = parseFontScale(
@@ -36,6 +42,10 @@ export default async function VideoDetailPage({
     notFound()
   }
 
+  if (!video.article) {
+    redirect(backHref)
+  }
+
   const categories = await getCategories()
   const normalizedCategory = normalizeCategory(video.category)
 
@@ -43,10 +53,6 @@ export default async function VideoDetailPage({
     categories.push(normalizedCategory)
     categories.sort((a, b) => a.localeCompare(b))
   }
-
-  const fullArticleHref = video.article
-    ? `/video/${id}/article?from=${encodeURIComponent(selfHref)}`
-    : null
 
   return (
     <div className="animate-[qws-fade-up_320ms_var(--ease-qw)]">
@@ -68,12 +74,11 @@ export default async function VideoDetailPage({
             videoChannelId={video.videoChannelId}
             videoChannelTitle={video.videoChannelTitle}
             videoPublished={video.videoPublished}
-            body={video.summary}
-            fullArticleHref={fullArticleHref}
+            body={video.article}
+            emptyMessage="No article text is available yet."
           />
         </FontSizeProvider>
       </article>
     </div>
   )
 }
-

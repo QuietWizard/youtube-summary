@@ -46,10 +46,10 @@ export default function OfflineReader({ onClose }: OfflineReaderProps) {
       <div className="mb-7 flex items-center justify-between gap-3 border-b border-qw-border pb-5">
         <div>
           <div className="mb-1.5 text-[11px] font-bold tracking-[0.2em] text-qw-accent uppercase">
-            Saved Videos
+            Saved Articles
           </div>
           <h1 className="font-display text-[22px] font-semibold text-qw-fg-1">
-            {activeVideo ? activeVideo.title || 'Untitled video' : 'Read what you\'ve saved'}
+            {activeVideo ? activeVideo.title || 'Untitled article' : 'Read what you\'ve saved'}
           </h1>
           <p className="mt-1 text-[13px] text-qw-muted-2">
             {syncedAt
@@ -97,14 +97,14 @@ function OfflineGrid({
   onSelect: (id: number) => void
 }) {
   if (videos === null) {
-    return <p className="text-sm text-qw-muted-1">Loading saved videos…</p>
+    return <p className="text-sm text-qw-muted-1">Loading saved articles…</p>
   }
 
   if (videos.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-qw-border px-6 py-16 text-center">
         <p className="text-sm text-qw-muted-1">
-          No videos are saved for offline reading yet.
+          No articles are saved for offline reading yet.
         </p>
       </div>
     )
@@ -170,6 +170,8 @@ function OfflineArticle({
   onBack: () => void
 }) {
   const localThumbnail = useLocalThumbnail(video.id)
+  const [showFullArticle, setShowFullArticle] = useState(false)
+  const body = showFullArticle ? video.article : video.summary
 
   return (
     <article>
@@ -178,7 +180,7 @@ function OfflineArticle({
         onClick={onBack}
         className="mb-5 flex h-[38px] items-center gap-1.5 rounded-md border border-qw-border bg-qw-surface-1 px-3 text-[13px] font-medium text-qw-fg-2 transition-colors hover:border-qw-border-strong hover:bg-qw-surface-2"
       >
-        Back to saved videos
+        Back to saved articles
       </button>
 
       {localThumbnail && (
@@ -191,7 +193,7 @@ function OfflineArticle({
       )}
 
       <h1 className="mb-3 font-display text-[28px] leading-tight font-semibold text-qw-fg-1">
-        {video.title || 'Untitled video'}
+        {video.title || 'Untitled article'}
       </h1>
       <p className="mb-6 text-[14px] font-medium text-qw-fg-2">
         {video.videoChannelTitle || 'Unknown channel'}
@@ -199,14 +201,24 @@ function OfflineArticle({
 
       <hr className="mb-6 border-qw-border" />
 
-      {video.summary ? (
+      {body ? (
         <div className="font-body text-[16px] leading-[1.75] text-qw-fg-2">
-          {video.summary.split('\n').map((line, index) => (
+          {body.split('\n').map((line, index) => (
             <OfflineSummaryLine key={`${index}-${line}`} line={line} />
           ))}
         </div>
       ) : (
-        <p className="text-qw-muted-1">No summary is available for this video.</p>
+        <p className="text-qw-muted-1">No summary is available for this article.</p>
+      )}
+
+      {video.article && (
+        <button
+          type="button"
+          onClick={() => setShowFullArticle((current) => !current)}
+          className="mt-8 flex h-11 w-full items-center justify-center rounded-md border border-qw-border-strong bg-qw-surface-1 px-4 text-[14px] font-semibold text-qw-fg-1 transition-colors hover:bg-qw-surface-2"
+        >
+          {showFullArticle ? 'Back to Summary' : 'Read Full Article'}
+        </button>
       )}
     </article>
   )

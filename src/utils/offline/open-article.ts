@@ -12,6 +12,11 @@ export type OpenArticleRequest = {
   // the address bar and back button behave correctly even though no
   // navigation actually happened.
   href: string
+  // Which of the two drill-down levels to show — the article summary
+  // (video/[id]) or the full article (video/[id]/article). See
+  // local-article-host.tsx, which re-derives this from the URL on
+  // popstate rather than tracking it as a manual stack.
+  variant: 'summary' | 'article'
 }
 
 export function requestOpenArticle(request: OpenArticleRequest) {
