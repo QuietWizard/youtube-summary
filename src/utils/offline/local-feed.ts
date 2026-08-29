@@ -33,7 +33,8 @@ function matchesSearch(video: OfflineVideo, term: string): boolean {
   return (
     Boolean(video.title?.toLowerCase().includes(term)) ||
     Boolean(video.videoChannelTitle?.toLowerCase().includes(term)) ||
-    Boolean(video.summary?.toLowerCase().includes(term))
+    Boolean(video.summary?.toLowerCase().includes(term)) ||
+    Boolean(video.article?.toLowerCase().includes(term))
   )
 }
 

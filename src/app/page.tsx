@@ -78,12 +78,12 @@ export default async function Home({
   }
 
   if (searchTerm) {
-    // Search title, channel, and summary text server-side so the (potentially
-    // large) summary column never needs to be sent to the client just to
-    // support search.
+    // Search title, channel, summary, and full-article text server-side so
+    // those (potentially large) text columns never need to be sent to the
+    // client just to support search.
     const pattern = toIlikePattern(searchTerm)
     query = query.or(
-      `title.ilike.${pattern},videoChannelTitle.ilike.${pattern},summary.ilike.${pattern}`
+      `title.ilike.${pattern},videoChannelTitle.ilike.${pattern},summary.ilike.${pattern},article.ilike.${pattern}`
     )
   }
 
