@@ -30,6 +30,7 @@ export default function LocalArticleHost() {
   const { getLocalVideoById, getLocalVideoByKey } = useLocalVideos()
   const { categories } = useVideoSync()
   const [open, setOpen] = useState<OpenState>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // The popstate handler below is only ever attached once (on mount), so a
   // plain closure over getLocalVideoByKey would be stuck forever on
@@ -45,14 +46,6 @@ export default function LocalArticleHost() {
     return subscribeToOpenArticleRequests(({ id, href, variant }) => {
       window.history.pushState({ localArticle: id, variant }, '', href)
       setOpen({ id, variant })
-      // Each open is a full content swap (a different video, or the same
-      // video's summary vs. its full article) — without this, the new
-      // content inherits whatever scroll position the click happened at,
-      // which for "Read Full Article" (a button near the bottom of the
-      // summary) means opening already scrolled partway down, making a
-      // genuinely different document look like a continuation of the one
-      // just left.
-      window.scrollTo(0, 0)
     })
   }, [])
 
@@ -61,28 +54,28 @@ export default function LocalArticleHost() {
   // what (if anything) the address bar now points at.
   useEffect(() => {
     function handlePopState() {
-      const next = deriveOpenStateFromLocation(getLocalVideoByKeyRef.current)
-      setOpen(next)
-      // Same reasoning as the open handler above — but only when landing on
-      // another overlay variant. Popping all the way back to the bare feed
-      // is left alone, matching the feed's own back/forward behavior
-      // (videos-client.tsx), which defers to the browser's native
-      // scroll-position restoration there instead of forcing one.
-      //
-      // Deferred a frame: on a real popstate (unlike the fresh pushState in
-      // the open handler above), the browser applies its own remembered
-      // scroll position for the entry being restored — and it does that
-      // asynchronously, so a synchronous scrollTo here just gets
-      // overwritten immediately after. Waiting a frame lets that native
-      // restoration happen first, so this one lands last and wins.
-      if (next) {
-        requestAnimationFrame(() => window.scrollTo(0, 0))
-      }
+      setOpen(deriveOpenStateFromLocation(getLocalVideoByKeyRef.current))
     }
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  // Each open (or switch between summary and full article) is a full
+  // content swap and should read from its own top — but the overlay is a
+  // `fixed` + `overflow-y-auto` div, scrolling *inside itself* rather than
+  // scrolling the window, and React keeps reusing that same div across
+  // variant changes rather than remounting it. So neither window.scrollTo
+  // nor waiting out the browser's own history scroll restoration (which
+  // only ever applies to the window/document, never to an arbitrary div's
+  // own scrollTop) has any effect here — this div's scroll position simply
+  // never resets on its own, for either a fresh open or a popstate. This
+  // effect is the one thing that actually needs to run each time.
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0
+    }
+  }, [open?.id, open?.variant])
 
   const video = open != null ? getLocalVideoById(open.id) : undefined
 
@@ -101,7 +94,7 @@ export default function LocalArticleHost() {
     : null
 
   return (
-    <div className="fixed inset-0 z-[95] overflow-y-auto bg-qw-bg">
+    <div ref={scrollContainerRef} className="fixed inset-0 z-[95] overflow-y-auto bg-qw-bg">
       <div className="animate-[qws-fade-up_320ms_var(--ease-qw)]">
         <VideoHero id={video.id} thumbnail={video.thumbnail} />
 
