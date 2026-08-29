@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocalVideos } from './local-videos-context'
 import { useVideoSync } from './video-sync-context'
 import { subscribeToOpenArticleRequests } from '@/utils/offline/open-article'
@@ -31,6 +31,16 @@ export default function LocalArticleHost() {
   const { categories } = useVideoSync()
   const [open, setOpen] = useState<OpenState>(null)
 
+  // The popstate handler below is only ever attached once (on mount), so a
+  // plain closure over getLocalVideoByKey would be stuck forever on
+  // whatever it was at that first render — which, since LocalVideosProvider
+  // loads its data asynchronously, is an empty lookup that never finds
+  // anything. Reading through a ref instead always sees the latest data.
+  const getLocalVideoByKeyRef = useRef(getLocalVideoByKey)
+  useEffect(() => {
+    getLocalVideoByKeyRef.current = getLocalVideoByKey
+  }, [getLocalVideoByKey])
+
   useEffect(() => {
     return subscribeToOpenArticleRequests(({ id, href, variant }) => {
       window.history.pushState({ localArticle: id, variant }, '', href)
@@ -43,12 +53,11 @@ export default function LocalArticleHost() {
   // what (if anything) the address bar now points at.
   useEffect(() => {
     function handlePopState() {
-      setOpen(deriveOpenStateFromLocation(getLocalVideoByKey))
+      setOpen(deriveOpenStateFromLocation(getLocalVideoByKeyRef.current))
     }
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const video = open != null ? getLocalVideoById(open.id) : undefined
