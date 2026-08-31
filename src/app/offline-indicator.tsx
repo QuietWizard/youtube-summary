@@ -8,6 +8,7 @@ import { subscribeToOpenReaderRequests } from '@/utils/offline/open-reader'
 import { requestOpenArticle } from '@/utils/offline/open-article'
 import { requestFeedNavigation } from '@/utils/offline/feed-navigation'
 import { useLocalVideos } from './local-videos-context'
+import { useLockBodyScroll } from '@/utils/use-lock-body-scroll'
 import OfflineReader from './offline-reader'
 
 function subscribeToConnectivity(callback: () => void) {
@@ -40,6 +41,7 @@ export default function OfflineIndicator() {
   const pendingCount = usePendingMutationCount()
   const { getLocalVideoByKey, hasLocalData } = useLocalVideos()
   const [isReaderOpen, setIsReaderOpen] = useState(false)
+  useLockBodyScroll(isReaderOpen)
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) {
