@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Cinzel, EB_Garamond, Space_Grotesk } from "next/font/google";
 import AppShell from "./app-shell";
+import SplashScreen from "./splash-screen";
 import "./globals.css";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getCurrentUser } from "@/utils/supabase/get-current-user";
@@ -64,6 +65,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full">
+        <SplashScreen />
         <AppShell
           categories={categories}
           allCount={allCount}
