@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
+import { SPLASH_LOGO_DATA_URI } from './splash-logo'
 
 // Shown once per real app launch — mounted once at the root layout, which
 // only ever runs on an actual page load (a fresh tab, a cold PWA launch, a
@@ -40,7 +40,17 @@ export default function SplashScreen() {
       style={{ transitionDuration: `${FADE_MS}ms` }}
       aria-hidden="true"
     >
-      <Image src="/logo-dark.png" alt="" width={96} height={96} priority className="object-contain" />
+      {/* eslint-disable-next-line @next/next/no-img-element -- deliberately
+          not next/image: even at a 96x96 render size, next/image still
+          fetches the full source file over the network before it can
+          resize it, and public/logo-dark.png is a ~1MB 1024x1024 source.
+          That fetch is exactly the gap a cold PWA launch can't hide —
+          confirmed live via frame-by-frame video: the background painted
+          instantly, but the logo itself didn't appear for several hundred
+          more milliseconds. A pre-compressed copy inlined as a data URI
+          has no network dependency at all, so it paints in the same
+          frame as the background. */}
+      <img src={SPLASH_LOGO_DATA_URI} alt="" width={96} height={96} className="object-contain" />
     </div>
   )
 }
