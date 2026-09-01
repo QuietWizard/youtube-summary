@@ -21,11 +21,16 @@ export default async function FullArticlePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ from?: string }>
+  searchParams: Promise<{ from?: string; feedFrom?: string }>
 }) {
   const { id } = await params
-  const { from } = await searchParams
+  const { from, feedFrom } = await searchParams
   const backHref = isSafeRedirectTarget(from) ? from : `/video/${id}`
+  // Where archiving redirects to — the feed, not this page's own "Back"
+  // target (the summary page, which would show a now-archived video).
+  // Falls back to backHref only if feedFrom is somehow missing; every
+  // real link to this page (see video/[id]/page.tsx) always sets it.
+  const archiveHref = isSafeRedirectTarget(feedFrom) ? feedFrom : backHref
   const user = await getCurrentUser()
   const cookieStore = await cookies()
   const initialFontScale = parseFontScale(
@@ -63,6 +68,7 @@ export default async function FullArticlePage({
           <ActionBar
             videoId={video.id}
             backHref={backHref}
+            archiveHref={archiveHref}
             initialCategory={normalizedCategory}
             categories={categories}
             initialRead={video.read === true}
