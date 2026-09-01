@@ -146,10 +146,11 @@ export default function ActionBar({
     })
   }
 
-  function handleMarkRead() {
-    setIsRead(true)
-    setPendingChange(videoId, { read: true })
-    applyLocalMutation(videoId, 'read', true)
+  function handleToggleRead() {
+    const nextRead = !isRead
+    setIsRead(nextRead)
+    setPendingChange(videoId, { read: nextRead })
+    applyLocalMutation(videoId, 'read', nextRead)
   }
 
   function handleArchive() {
@@ -330,7 +331,11 @@ export default function ActionBar({
 
       <div className="flex items-center gap-2">
         {isRead ? (
-          <span className="flex h-[38px] items-center gap-1.5 rounded-md border border-qw-success/35 bg-qw-success/10 px-3 text-xs font-semibold text-qw-success">
+          <button
+            type="button"
+            onClick={handleToggleRead}
+            className="flex h-[38px] items-center gap-1.5 rounded-md border border-qw-success/35 bg-qw-success/10 px-3 text-xs font-semibold text-qw-success transition-colors hover:bg-qw-success/20"
+          >
             <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
               <path
                 fillRule="evenodd"
@@ -339,11 +344,11 @@ export default function ActionBar({
               />
             </svg>
             Read
-          </span>
+          </button>
         ) : (
           <button
             type="button"
-            onClick={handleMarkRead}
+            onClick={handleToggleRead}
             className="h-[38px] rounded-md border border-qw-border bg-qw-surface-1 px-3.5 text-xs font-semibold text-qw-fg-2 transition-colors hover:border-qw-border-strong hover:bg-qw-surface-2"
           >
             Mark as Read

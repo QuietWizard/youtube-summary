@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { Cinzel, EB_Garamond, Space_Grotesk } from "next/font/google";
 import AppShell from "./app-shell";
@@ -47,17 +49,11 @@ export type CategoryNavItem = {
   count: number;
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const { categories, allCount, uncategorizedCount, userEmail } =
-    await getNavData();
-  const cookieStore = await cookies();
-  const initialNavCollapsed =
-    cookieStore.get(NAV_COLLAPSED_COOKIE)?.value === "true";
-
   return (
     <html
       lang="en"
@@ -74,17 +70,41 @@ export default async function RootLayout({
           no stylesheet required. */}
       <body className="min-h-full" style={{ backgroundColor: "#07090f" }}>
         <SplashScreen />
-        <AppShell
-          categories={categories}
-          allCount={allCount}
-          uncategorizedCount={uncategorizedCount}
-          userEmail={userEmail}
-          initialNavCollapsed={initialNavCollapsed}
-        >
-          {children}
-        </AppShell>
+        {/* RootLayout itself is no longer async: it used to await the
+            sidebar's nav data (a Supabase round trip) before returning
+            *any* JSX, which held back the entire HTML document — the
+            splash screen included — until that query resolved. That was
+            the actual "blank screen before the logo" gap, not something
+            the inline background-color fix above could touch, since
+            there was no HTML to paint a background on yet. Suspense lets
+            the shell (and the splash inside it) stream out immediately;
+            the nav-dependent chrome fills in the moment the query
+            finishes, invisibly, behind the still-showing splash. */}
+        <Suspense fallback={null}>
+          <AppShellWithNavData>{children}</AppShellWithNavData>
+        </Suspense>
       </body>
     </html>
+  );
+}
+
+async function AppShellWithNavData({ children }: { children: ReactNode }) {
+  const { categories, allCount, uncategorizedCount, userEmail } =
+    await getNavData();
+  const cookieStore = await cookies();
+  const initialNavCollapsed =
+    cookieStore.get(NAV_COLLAPSED_COOKIE)?.value === "true";
+
+  return (
+    <AppShell
+      categories={categories}
+      allCount={allCount}
+      uncategorizedCount={uncategorizedCount}
+      userEmail={userEmail}
+      initialNavCollapsed={initialNavCollapsed}
+    >
+      {children}
+    </AppShell>
   );
 }
 
