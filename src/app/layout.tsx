@@ -62,9 +62,17 @@ export default async function RootLayout({
     <html
       lang="en"
       className={`h-full antialiased ${cinzel.variable} ${ebGaramond.variable} ${spaceGrotesk.variable}`}
+      style={{ backgroundColor: "#07090f" }}
       suppressHydrationWarning
     >
-      <body className="min-h-full">
+      {/* Inline, not just the bg-qw-bg class from globals.css: the point
+          of the splash screen is to be the very first thing shown, and a
+          class needs the external stylesheet to load first — on a slow
+          connection or a cold PWA launch, that gap shows as a flash of
+          the browser's default white background before the dark splash
+          ever appears. An inline style paints correctly on first paint,
+          no stylesheet required. */}
+      <body className="min-h-full" style={{ backgroundColor: "#07090f" }}>
         <SplashScreen />
         <AppShell
           categories={categories}
