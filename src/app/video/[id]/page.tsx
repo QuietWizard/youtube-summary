@@ -44,8 +44,14 @@ export default async function VideoDetailPage({
     categories.sort((a, b) => a.localeCompare(b))
   }
 
+  // feedFrom carries the ultimate feed context through to the full-article
+  // page, separately from `from` (which points back to this summary page)
+  // — the full article's Back button should go up one level to here, but
+  // archiving from there should skip straight to the feed instead of
+  // landing on the summary page for a video that's now archived. See
+  // archiveHref on ActionBar.
   const fullArticleHref = video.article
-    ? `/video/${id}/article?from=${encodeURIComponent(selfHref)}`
+    ? `/video/${id}/article?from=${encodeURIComponent(selfHref)}&feedFrom=${encodeURIComponent(backHref)}`
     : null
 
   return (

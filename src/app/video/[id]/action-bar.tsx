@@ -23,6 +23,14 @@ type ActionBarProps = {
       // navigates away via the router.
       backHref: string
       onClose?: undefined
+      // Where archiving should end up. Distinct from backHref because the
+      // full-article page's "Back" goes up one level to the article
+      // summary — but archiving should always land on the feed, the same
+      // as archiving from the summary page itself, not on a summary page
+      // for a video that's now archived. Defaults to backHref, which is
+      // already the feed on every page except the full article one.
+      archiveHref?: string
+      onArchive?: undefined
     }
   | {
       // Overlay mode (local-article-host.tsx): there's no route to link
@@ -30,6 +38,10 @@ type ActionBarProps = {
       // regardless of connectivity, unlike a real navigation.
       backHref?: undefined
       onClose: () => void
+      archiveHref?: undefined
+      // Same reasoning as archiveHref above, for the overlay's own
+      // history-based navigation — defaults to onClose.
+      onArchive?: () => void
     }
 )
 
@@ -37,6 +49,8 @@ export default function ActionBar({
   videoId,
   backHref,
   onClose,
+  archiveHref,
+  onArchive,
   initialCategory,
   categories,
   initialRead,
@@ -153,7 +167,8 @@ export default function ActionBar({
     if (onClose) {
       // Overlay mode: closing is local state, not a navigation — always
       // safe, no connectivity concern at all.
-      onClose()
+      const closeAfterArchive = onArchive ?? onClose
+      closeAfterArchive()
       return
     }
 
@@ -164,7 +179,7 @@ export default function ActionBar({
     // gap noted in offline-indicator.tsx). Open the local reader in place
     // instead of attempting it.
     if (navigator.onLine) {
-      router.push(backHref)
+      router.push(archiveHref ?? backHref)
     } else {
       requestOpenReader()
     }
@@ -173,7 +188,13 @@ export default function ActionBar({
   const categoryOptions = ['None', ...categories.filter((c) => c !== 'None')]
 
   return (
-    <div className="sticky top-0 z-10 -mt-7 mb-7 flex flex-wrap items-center justify-between gap-3 border-b border-qw-border bg-qw-bg/90 py-3.5 backdrop-blur-md">
+    // The mobile top bar (app-shell.tsx) is also `sticky top-0`, at a
+    // higher z-index — on mobile both would otherwise land at the same
+    // spot and the top bar would visually cover the upper half of this
+    // one. `top-[65px]` sits this bar right below it instead; 65px is
+    // that bar's actual rendered height, so it needs to move in lockstep
+    // if that bar's height ever changes.
+    <div className="sticky top-[65px] z-10 -mt-7 mb-7 flex flex-wrap items-center justify-between gap-3 border-b border-qw-border bg-qw-bg/90 py-3.5 backdrop-blur-md md:top-0">
       <div className="flex items-center gap-2.5">
         {onClose ? (
           <button
