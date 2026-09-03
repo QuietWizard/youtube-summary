@@ -21,6 +21,18 @@ export default function SplashScreen() {
   }, [])
 
   useEffect(() => {
+    // Session refresh moved here from proxy.ts (middleware): it used to
+    // block the entire response for every cold launch on a Supabase round
+    // trip, which was the actual cause of the black screen before this
+    // component could even mount. Firing it now, once per real launch,
+    // keeps refresh happening (still the only place that can persist the
+    // renewed cookies, alongside middleware) without it gating first
+    // paint. Errors are ignored — this is a best-effort background
+    // refresh, not something the splash's own lifecycle depends on.
+    fetch('/api/refresh-session').catch(() => {})
+  }, [])
+
+  useEffect(() => {
     if (phase !== 'fading') {
       return
     }

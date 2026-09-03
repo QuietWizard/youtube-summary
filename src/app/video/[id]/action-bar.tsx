@@ -188,14 +188,25 @@ export default function ActionBar({
 
   const categoryOptions = ['None', ...categories.filter((c) => c !== 'None')]
 
+  // The real-page variant (backHref) renders below app-shell.tsx's mobile
+  // top bar, which is also `sticky top-0` at a higher z-index — on mobile
+  // both would otherwise land at the same spot and the top bar would
+  // visually cover the upper half of this one. `top-[65px]` sits this bar
+  // right below it instead; 65px is that bar's actual rendered height, so
+  // it needs to move in lockstep if that bar's height ever changes.
+  //
+  // The overlay variant (onClose, from local-article-host.tsx) is a
+  // `fixed inset-0` panel that covers the entire viewport, including that
+  // top bar — there's nothing above this bar to clear, so the same
+  // 65px offset instead left a gap of bare background (or the article's
+  // own scrolled-under content showing through) between the true top edge
+  // and the bar once it stuck. That's the "not flush" gap seen live.
+  const stickyTopClassName = onClose ? 'top-0' : 'top-[65px] md:top-0'
+
   return (
-    // The mobile top bar (app-shell.tsx) is also `sticky top-0`, at a
-    // higher z-index — on mobile both would otherwise land at the same
-    // spot and the top bar would visually cover the upper half of this
-    // one. `top-[65px]` sits this bar right below it instead; 65px is
-    // that bar's actual rendered height, so it needs to move in lockstep
-    // if that bar's height ever changes.
-    <div className="sticky top-[65px] z-10 -mt-7 mb-7 flex flex-wrap items-center justify-between gap-3 border-b border-qw-border bg-qw-bg/90 py-3.5 backdrop-blur-md md:top-0">
+    <div
+      className={`sticky ${stickyTopClassName} z-10 -mt-7 mb-7 flex flex-wrap items-center justify-between gap-3 border-b border-qw-border bg-qw-bg/90 py-3.5 backdrop-blur-md`}
+    >
       <div className="flex items-center gap-2.5">
         {onClose ? (
           <button
