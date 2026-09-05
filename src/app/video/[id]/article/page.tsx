@@ -10,12 +10,16 @@ import { getVideoByUrlId, isSafeRedirectTarget } from '../get-video-by-url-id'
 import { FONT_SIZE_COOKIE, parseFontScale } from '../font-size-cookie'
 
 // The full-article view one level below the article-summary page at
-// video/[id] — "Back" here returns to that summary page (via `from`,
-// which the summary page set to its own URL), not all the way to the
-// feed. Redirects to the summary page for a video with no full article,
-// since the "Read Full Article" link is only ever shown when one exists —
-// reaching this route without one means a stale link, not a real state to
-// render.
+// video/[id]. "Back" and archiving both return all the way to the feed —
+// neither should land back on the summary page, which for archiving
+// would show a now-archived video, and which for Back just adds a
+// pointless extra step when the summary is only ever a pass-through on
+// the way here. `summaryHref` is kept only as the redirect target for a
+// video with no full article (the "Read Full Article" link is never
+// shown without one, so reaching this route without one means a stale
+// link, not a real state to render) and as a fallback if `feedFrom` is
+// somehow missing; every real link to this page (see video/[id]/page.tsx)
+// always sets it.
 export default async function FullArticlePage({
   params,
   searchParams,
@@ -25,12 +29,8 @@ export default async function FullArticlePage({
 }) {
   const { id } = await params
   const { from, feedFrom } = await searchParams
-  const backHref = isSafeRedirectTarget(from) ? from : `/video/${id}`
-  // Where archiving redirects to — the feed, not this page's own "Back"
-  // target (the summary page, which would show a now-archived video).
-  // Falls back to backHref only if feedFrom is somehow missing; every
-  // real link to this page (see video/[id]/page.tsx) always sets it.
-  const archiveHref = isSafeRedirectTarget(feedFrom) ? feedFrom : backHref
+  const summaryHref = isSafeRedirectTarget(from) ? from : `/video/${id}`
+  const feedHref = isSafeRedirectTarget(feedFrom) ? feedFrom : summaryHref
   const user = await getCurrentUser()
   const cookieStore = await cookies()
   const initialFontScale = parseFontScale(
@@ -48,7 +48,7 @@ export default async function FullArticlePage({
   }
 
   if (!video.article) {
-    redirect(backHref)
+    redirect(summaryHref)
   }
 
   const categories = await getCategories()
@@ -67,8 +67,7 @@ export default async function FullArticlePage({
         <FontSizeProvider initialScale={initialFontScale}>
           <ActionBar
             videoId={video.id}
-            backHref={backHref}
-            archiveHref={archiveHref}
+            backHref={feedHref}
             initialCategory={normalizedCategory}
             categories={categories}
             initialRead={video.read === true}

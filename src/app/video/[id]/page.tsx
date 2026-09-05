@@ -45,11 +45,10 @@ export default async function VideoDetailPage({
   }
 
   // feedFrom carries the ultimate feed context through to the full-article
-  // page, separately from `from` (which points back to this summary page)
-  // — the full article's Back button should go up one level to here, but
-  // archiving from there should skip straight to the feed instead of
-  // landing on the summary page for a video that's now archived. See
-  // archiveHref on ActionBar.
+  // page, separately from `from` (which points back to this summary page).
+  // Both Back and Archive on the full article go straight to the feed —
+  // `from` is kept only as a fallback and as the redirect target for a
+  // video with no full article. See article/page.tsx.
   const fullArticleHref = video.article
     ? `/video/${id}/article?from=${encodeURIComponent(selfHref)}&feedFrom=${encodeURIComponent(backHref)}`
     : null

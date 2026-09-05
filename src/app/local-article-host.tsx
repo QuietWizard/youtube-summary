@@ -95,13 +95,15 @@ export default function LocalArticleHost() {
     ? `/video/${videoKey}/article?from=${encodeURIComponent(window.location.pathname + window.location.search)}`
     : null
 
-  // Archiving should always land back on the feed — never on the article
-  // summary for a video that's now archived. From the summary variant
-  // that's exactly what close() already does (one entry back to the
-  // feed). From the article variant, the only way here is always via the
-  // "Read Full Article" link on the summary overlay (pushed on top of
-  // it), so the feed is reliably two entries back rather than one.
-  const closeAfterArchive = isSummary ? close : () => window.history.go(-2)
+  // Both Back and Archive should always land on the feed — never on the
+  // article summary for a video that's now archived, and never leaving
+  // Back to just re-reveal that pass-through summary either. From the
+  // summary variant that's exactly what close() already does (one entry
+  // back to the feed). From the article variant, the only way here is
+  // always via the "Read Full Article" link on the summary overlay
+  // (pushed on top of it), so the feed is reliably two entries back
+  // rather than one.
+  const closeToFeed = isSummary ? close : () => window.history.go(-2)
 
   return (
     <div ref={scrollContainerRef} className="fixed inset-0 z-[95] overflow-y-auto bg-qw-bg">
@@ -112,8 +114,8 @@ export default function LocalArticleHost() {
           <FontSizeProvider initialScale={readFontScaleCookie()}>
             <ActionBar
               videoId={video.id}
-              onClose={close}
-              onArchive={closeAfterArchive}
+              onClose={closeToFeed}
+              onArchive={closeToFeed}
               initialCategory={normalizeCategory(video.category)}
               categories={categories.map((category) => category.label)}
               initialRead={video.read === true}
